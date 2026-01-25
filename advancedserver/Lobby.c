@@ -81,34 +81,27 @@ bool lobby_check_countdown(Server* server)
 	if (!server) // stop warnings
 		return false;
 
-    // Убираем подсчет ready игроков, так как он больше не нужен для старта
-    /*
-    uint8_t count = 0;
-	for (size_t i = 0; i < server->peers.capacity; i++)
-	{
-		PeerData* peer = (PeerData*)server->peers.ptr[i];
-		if (!peer)
-			continue;
-
-		if (peer->ready)
-			count++;
-	}
-    */
-
-    // Если есть хотя бы 1 человек (server->peers.noitems >= 1)
+    // Если есть хотя бы 1 игрок
     if (server->peers.noitems >= 1)
 	{
-        // Если таймер еще не идет (равен значению "без таймера"), запускаем его
-        if (server->lobby.countdown_sec == NO_COUNTDOWN) 
+        // Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
+        if (server->lobby.countdown_sec == NO_COUNTDOWN)
         {
             server->lobby.countdown = TICKSPERSEC;
-            server->lobby.countdown_sec = COUNTDOWN;
+            server->lobby.countdown_sec = COUNTDOWN; // Ставим 59
+            
+            // Здесь мы НЕ отправляем lobby_send_countdown(server), 
+            // чтобы у игроков не появились цифры на экране раньше времени.
+        }
+        // Если таймер уже идет и осталось 5 или меньше секунд — обновляем визуализацию
+        else if (server->lobby.countdown_sec <= 5)
+        {
             RAssert(lobby_send_countdown(server));
         }
 	}
+    // Если игроков нет — сбрасываем
 	else if (server->lobby.countdown_sec != NO_COUNTDOWN)
 	{
-        // Если игроков нет (0), сбрасываем таймер
 		server->lobby.countdown = TICKSPERSEC;
 		server->lobby.countdown_sec = NO_COUNTDOWN;
 		RAssert(lobby_send_countdown(server));
@@ -692,22 +685,39 @@ bool lobby_state_tick(Server* server)
 		if (server->lobby.countdown <= 0)
 		{
 			server->lobby.countdown += TICKSPERSEC;
+            server->lobby.countdown_sec--; // Уменьшаем секунды
 
-            if (--server->lobby.countdown_sec == 0){
+            // Если время вышло — начинаем игру
+            if (server->lobby.countdown_sec == 0)
+            {
                 if(g_config.states.lobby_misc.kick_unready_before_starting)
                     for(size_t i = 0; i < server->peers.capacity; i++){
                         PeerData* peer = (PeerData*)server->peers.ptr[i];
-                        if (!peer)
-                            continue;
-
-                        if(peer->ready)
-                            continue;
-
+                        if (!peer) continue;
+                        if(peer->ready) continue;
                         server_disconnect(server, peer->peer, DR_AFKTIMEOUT, NULL);
                     }
                 return mapvote_init(server) || lobby_init(server);
             }
-			RAssert(lobby_send_countdown(server));
+            
+            // --- НОВАЯ ЛОГИКА ---
+            
+            // 1. Пишем в чат каждые 5 секунд
+            if (server->lobby.countdown_sec % 5 == 0)
+            {
+                char buffer[256];
+                // Используем цвета для красоты (GRN - зеленый, RED - красный для цифры)
+                snprintf(buffer, 256, CLRCODE_GRN "Игра начнётся через " CLRCODE_RED "%d" CLRCODE_GRN " сек!", server->lobby.countdown_sec);
+                server_broadcast_msg(server, 0, buffer);
+            }
+
+            // 2. Отправляем визуальный таймер (цифры на экране) ТОЛЬКО если осталось <= 5 секунд
+            if (server->lobby.countdown_sec <= 5)
+            {
+			    RAssert(lobby_send_countdown(server));
+            }
+            
+            // --------------------
 		}
 
 		server->lobby.countdown -= server->delta;
