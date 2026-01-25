@@ -76,15 +76,15 @@ void report_status_to_master(int port, int players, int ingame)
 
     // Формируем HTTP запрос
     char request[512];
-    snprintf(request, sizeof(request),
-             "POST /update_status HTTP/1.1\r\n"
-             "Host: %s:%d\r\n"
-             "Content-Type: application/json\r\n"
-             "Content-Length: %zu\r\n"
-             "Connection: close\r\n"
-             "\r\n"
-             "%s",
-             api_ip, api_port, strlen(json_body), json_body);
+	int current_countdown = (server->state == ST_LOBBY) ? server->lobby.countdown_sec : 999;
+
+	snprintf(body, 512, 
+		"{\"port\": %d, \"players\": %d, \"ingame\": \"%s\", \"countdown\": %d}", // <--- Добавлено поле \"countdown\": %d
+		server->port, 
+		server->peers.noitems, 
+		server->state == ST_GAME ? "true" : "false",
+		current_countdown // <--- Добавлена переменная
+	);
 
     // Отправка
     send(sock, request, (int)strlen(request), 0);
