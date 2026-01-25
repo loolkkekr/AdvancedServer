@@ -70,22 +70,31 @@ void report_status_to_master(int port, int players, int ingame)
     }
 
     // Формируем JSON тело
-    char json_body[128];
-    snprintf(json_body, sizeof(json_body), "{\"port\": %d, \"players\": %d, \"ingame\": %s}", 
-             port, players, ingame ? "true" : "false");
+	
+	bool locked = (server->state == ST_LOBBY && server->lobby.countdown_sec <= 3 && server->lobby.countdown_sec > 0);
 
+	// И добавь поле "locked" в строку JSON. 
+	// Пример того, как это должно выглядеть (замени под свой код):
+
+	char json_buffer[256];
+	snprintf(json_buffer, 256, 
+		"{\"port\": %d, \"players\": %zu, \"ingame\": %s, \"locked\": %s}", 
+		server->port, 
+		server->peers.count, // или server_ingame(server)
+		server->state == ST_GAME ? "true" : "false", 
+		locked ? "true" : "false" // <-- ЭТО НУЖНО ДОБАВИТЬ
+	);
     // Формируем HTTP запрос
     char request[512];
-	extern Server g_server;
-	int current_countdown = (g_server.state == ST_LOBBY) ? g_server.lobby.countdown_sec : 999;
-
-	snprintf(body, 512, 
-		"{\"port\": %d, \"players\": %d, \"ingame\": \"%s\", \"countdown\": %d}", // <--- Добавлено поле \"countdown\": %d
-		server->port, 
-		server->peers.noitems, 
-		server->state == ST_GAME ? "true" : "false",
-		current_countdown // <--- Добавлена переменная
-	);
+    snprintf(request, sizeof(request),
+             "POST /update_status HTTP/1.1\r\n"
+             "Host: %s:%d\r\n"
+             "Content-Type: application/json\r\n"
+             "Content-Length: %zu\r\n"
+             "Connection: close\r\n"
+             "\r\n"
+             "%s",
+             api_ip, api_port, strlen(json_body), json_body);
 
     // Отправка
     send(sock, request, (int)strlen(request), 0);
