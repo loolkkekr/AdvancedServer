@@ -8,8 +8,8 @@
 #include <stdbool.h>
 #include <time.h>
 
-#define NO_COUNTDOWN 61
-#define COUNTDOWN 60
+#define NO_COUNTDOWN 62
+#define COUNTDOWN 61
 
 bool lobby_send_countdown(Server* server)
 {
