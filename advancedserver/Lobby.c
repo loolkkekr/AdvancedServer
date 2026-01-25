@@ -89,9 +89,9 @@ bool lobby_check_countdown(Server* server)
 	else if (server->peers.noitems == 5) target_time = 31;
 	else if (server->peers.noitems == 4) target_time = 41;
 	else if (server->peers.noitems == 3) target_time = 61;
-
+	else if (server->peers.noitems == 1) target_time = 7;
 	// Если есть хотя бы 1 игрок
-	if (server->peers.noitems >= 2)
+	if (server->peers.noitems >= 1)
 	{
 		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
 		if (server->lobby.countdown_sec == NO_COUNTDOWN)
