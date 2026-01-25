@@ -703,11 +703,11 @@ bool lobby_state_tick(Server* server)
             // --- НОВАЯ ЛОГИКА ---
             
             // 1. Пишем в чат каждые 5 секунд
-            if (server->lobby.countdown_sec % 5 == 0)
+            if (server->lobby.countdown_sec % 10 == 0)
             {
                 char buffer[256];
                 // Используем цвета для красоты (GRN - зеленый, RED - красный для цифры)
-                snprintf(buffer, 256, CLRCODE_GRN "Игра начнётся через " CLRCODE_RED "%d" CLRCODE_GRN " сек!", server->lobby.countdown_sec);
+                snprintf(buffer, 256, CLRCODE_GRN "игра начнется через " CLRCODE_RED "%d" CLRCODE_GRN " сек.", server->lobby.countdown_sec);
                 server_broadcast_msg(server, 0, buffer);
             }
 
