@@ -77,7 +77,7 @@ void report_status_to_master(int port, int players, int ingame)
     // Формируем HTTP запрос
     char request[512];
 	extern Server g_server;
-	int current_countdown = (server->state == ST_LOBBY) ? server->lobby.countdown_sec : 999;
+	int current_countdown = (g_server.state == ST_LOBBY) ? g_server.lobby.countdown_sec : 999;
 
 	snprintf(body, 512, 
 		"{\"port\": %d, \"players\": %d, \"ingame\": \"%s\", \"countdown\": %d}", // <--- Добавлено поле \"countdown\": %d
