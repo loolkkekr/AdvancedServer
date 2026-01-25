@@ -8,8 +8,8 @@
 #include <stdbool.h>
 #include <time.h>
 
-#define NO_COUNTDOWN 62
-#define COUNTDOWN 61
+#define NO_COUNTDOWN 92
+#define COUNTDOWN 91
 
 bool lobby_send_countdown(Server* server)
 {
@@ -81,25 +81,42 @@ bool lobby_check_countdown(Server* server)
 	if (!server) // stop warnings
 		return false;
 
-    // Если есть хотя бы 1 игрок
-    if (server->peers.noitems >= 1)
+	// Определяем время отсчета в зависимости от кол-ва игроков
+	int target_time = COUNTDOWN; // Стандартное время (61 или 59 по умолчанию)
+
+	if (server->peers.noitems >= 7)      target_time = 11;
+	else if (server->peers.noitems == 6) target_time = 21;
+	else if (server->peers.noitems == 5) target_time = 31;
+	else if (server->peers.noitems == 4) target_time = 41;
+	else if (server->peers.noitems == 3) target_time = 61;
+
+	// Если есть хотя бы 1 игрок
+	if (server->peers.noitems >= 2)
 	{
-        // Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
-        if (server->lobby.countdown_sec == NO_COUNTDOWN)
-        {
-            server->lobby.countdown = TICKSPERSEC;
-            server->lobby.countdown_sec = COUNTDOWN; // Ставим 59
-            
-            // Здесь мы НЕ отправляем lobby_send_countdown(server), 
-            // чтобы у игроков не появились цифры на экране раньше времени.
-        }
-        // Если таймер уже идет и осталось 5 или меньше секунд — обновляем визуализацию
-        else if (server->lobby.countdown_sec <= 5)
-        {
-            RAssert(lobby_send_countdown(server));
-        }
+		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
+		if (server->lobby.countdown_sec == NO_COUNTDOWN)
+		{
+			server->lobby.countdown = TICKSPERSEC;
+			server->lobby.countdown_sec = target_time;
+		}
+		// 2. Если таймер уже идет, но игроков стало больше и текущее время
+		// больше, чем допустимое для этого кол-ва игроков — сокращаем время.
+		// (Например: шло 60 сек, зашел 4-й игрок -> срезаем до 41 сек)
+		else if (server->lobby.countdown_sec > target_time)
+		{
+			server->lobby.countdown_sec = target_time;
+			// Можно обновить тики, чтобы секунда начиналась заново
+			server->lobby.countdown = TICKSPERSEC; 
+		}
+
+		// Логика отправки клиенту
+		// Если таймер идет и осталось 5 или меньше секунд — обновляем визуализацию
+		if (server->lobby.countdown_sec != NO_COUNTDOWN && server->lobby.countdown_sec <= 5)
+		{
+			RAssert(lobby_send_countdown(server));
+		}
 	}
-    // Если игроков нет — сбрасываем
+	// Если игроков нет — сбрасываем
 	else if (server->lobby.countdown_sec != NO_COUNTDOWN)
 	{
 		server->lobby.countdown = TICKSPERSEC;
@@ -109,7 +126,6 @@ bool lobby_check_countdown(Server* server)
 
 	return true;
 }
-
 bool lobby_state_handle(PeerData* v, Packet* packet)
 {
 	// sub-state machine
