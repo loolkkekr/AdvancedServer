@@ -8,8 +8,8 @@
 #include <stdbool.h>
 #include <time.h>
 
-#define NO_COUNTDOWN (5 + 1)
-#define COUNTDOWN g_config.states.lobby_misc.lobby_start_timer
+#define NO_COUNTDOWN 60
+#define COUNTDOWN 59
 
 bool lobby_send_countdown(Server* server)
 {
@@ -81,6 +81,8 @@ bool lobby_check_countdown(Server* server)
 	if (!server) // stop warnings
 		return false;
 
+    // Убираем подсчет ready игроков, так как он больше не нужен для старта
+    /*
     uint8_t count = 0;
 	for (size_t i = 0; i < server->peers.capacity; i++)
 	{
@@ -91,15 +93,22 @@ bool lobby_check_countdown(Server* server)
 		if (peer->ready)
 			count++;
 	}
+    */
 
-    if (server->peers.noitems * (g_config.states.lobby_misc.lobby_ready_required_percentage / 100.0) <= count && server->peers.noitems > 1 - g_config.states.gameplay.banana.singleplayer)
+    // Если есть хотя бы 1 человек (server->peers.noitems >= 1)
+    if (server->peers.noitems >= 1)
 	{
-		server->lobby.countdown = TICKSPERSEC;
-		server->lobby.countdown_sec = COUNTDOWN;
-		RAssert(lobby_send_countdown(server));
+        // Если таймер еще не идет (равен значению "без таймера"), запускаем его
+        if (server->lobby.countdown_sec == NO_COUNTDOWN) 
+        {
+            server->lobby.countdown = TICKSPERSEC;
+            server->lobby.countdown_sec = COUNTDOWN;
+            RAssert(lobby_send_countdown(server));
+        }
 	}
 	else if (server->lobby.countdown_sec != NO_COUNTDOWN)
 	{
+        // Если игроков нет (0), сбрасываем таймер
 		server->lobby.countdown = TICKSPERSEC;
 		server->lobby.countdown_sec = NO_COUNTDOWN;
 		RAssert(lobby_send_countdown(server));
