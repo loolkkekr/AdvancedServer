@@ -42,10 +42,8 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(Server* server)
+void report_status_to_master(int port, int players, int ingame)
 {
-    if (!server) return;
-
     // Адрес локального API
     const char* api_ip = "127.0.0.1";
     int api_port = 5010;
@@ -64,30 +62,18 @@ void report_status_to_master(Server* server)
     inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
 #endif
 
-    // Подключение
+    // Подключение (таймаут можно добавить через setsockopt, но здесь пропустим для краткости)
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
     {
-#ifdef _WIN32
         closesocket(sock);
-#else
-        close(sock);
-#endif
         return;
     }
 
-    // Логика locked (теперь server доступен)
-    bool locked = (server->state == ST_LOBBY && server->lobby.countdown_sec <= 3 && server->lobby.countdown_sec > 0);
-
-    // Формируем JSON тело (исправлено имя переменной на json_body)
-    char json_body[256];
-    snprintf(json_body, sizeof(json_body), 
-        "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s}", 
-        // ВНИМАНИЕ: Проверь, где у тебя хранится порт. Обычно это server->port или g_config.server_config.networking.port
-        g_config.server_config.networking.port, 
-        (int)server->peers.noitems, // Используем noitems (количество игроков), так как это массив
-        server->state == ST_GAME ? "true" : "false", 
-        locked ? "true" : "false"
-    );
+    // Формируем JSON тело
+	
+    char json_body[128];
+    snprintf(json_body, sizeof(json_body), "{\"port\": %d, \"players\": %d, \"ingame\": %s}", 
+             port, players, ingame ? "true" : "false");
 
     // Формируем HTTP запрос
     char request[512];
@@ -105,11 +91,7 @@ void report_status_to_master(Server* server)
     send(sock, request, (int)strlen(request), 0);
 
     // Закрытие
-#ifdef _WIN32
     closesocket(sock);
-#else
-    close(sock);
-#endif
 }
 // -----------------------------
 
