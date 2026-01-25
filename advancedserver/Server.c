@@ -21,8 +21,78 @@
 #include <ui/Main.h>
 #endif
 
+// --- HTTP Reporting Headers ---
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
+#else
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #define SOCKET int
+    #define INVALID_SOCKET -1
+    #define SOCKET_ERROR -1
+    #define closesocket close
+#endif
+// -----------------------------
+
 cJSON* ip_addr_list = NULL;
 Mutex ip_addr_mut;
+
+// --- API REPORT FUNCTION ---
+// Отправляет статус серверу менеджеру (Python)
+void report_status_to_master(int port, int players, int ingame)
+{
+    // Адрес локального API
+    const char* api_ip = "127.0.0.1";
+    int api_port = 5010;
+
+    // Создаем сокет
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) return;
+
+    // Настройка адреса
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(api_port);
+#ifdef _WIN32
+    server_addr.sin_addr.s_addr = inet_addr(api_ip);
+#else
+    inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
+#endif
+
+    // Подключение (таймаут можно добавить через setsockopt, но здесь пропустим для краткости)
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
+    {
+        closesocket(sock);
+        return;
+    }
+
+    // Формируем JSON тело
+    char json_body[128];
+    snprintf(json_body, sizeof(json_body), "{\"port\": %d, \"players\": %d, \"ingame\": %s}", 
+             port, players, ingame ? "true" : "false");
+
+    // Формируем HTTP запрос
+    char request[512];
+    snprintf(request, sizeof(request),
+             "POST /update_status HTTP/1.1\r\n"
+             "Host: %s:%d\r\n"
+             "Content-Type: application/json\r\n"
+             "Content-Length: %zu\r\n"
+             "Connection: close\r\n"
+             "\r\n"
+             "%s",
+             api_ip, api_port, strlen(json_body), json_body);
+
+    // Отправка
+    send(sock, request, (int)strlen(request), 0);
+
+    // Закрытие
+    closesocket(sock);
+}
+// -----------------------------
 
 bool peer_identity_process(PeerData* v, const char* addr, bool is_banned, uint64_t timeout, bool do_timeout)
 {
@@ -332,6 +402,9 @@ bool server_worker(Server* server)
 	double next_tick = time_end(&ticker);
 	double heartbeat = 0.0;
 	const double TARGET_FPS = 1000.0 / 60;
+    
+    // Переменная для таймера отправки API запросов
+    double api_report_timer = 0.0;
 
 	Packet pack;
 	PacketCreate(&pack, SERVER_HEARTBEAT);
@@ -462,6 +535,20 @@ bool server_worker(Server* server)
 					}
 					heartbeat += server->delta;
 				}
+                
+                // --- API REPORT LOGIC ---
+                // Отправляем статус каждые 2000 мс (2 секунды)
+                if (api_report_timer >= 2000.0) 
+                {
+                    bool is_ingame = (server->state == ST_GAME);
+                    // Вызываем нашу функцию отправки HTTP
+                    report_status_to_master(g_config.server_config.networking.port, server->peers.noitems, is_ingame);
+                    api_report_timer = 0;
+                }
+                // server->delta обычно 1, если мы в цикле fixed update.
+                // TICKSPERSEC = 60. 2000ms = 2 сек. 
+                // Здесь time_end возвращает миллисекунды (обычно), так что:
+                api_report_timer += (1000.0 / 60.0); // Прибавляем время кадра ~16.6ms
 			}
 			MutexUnlock(server->state_lock);
 			server->delta = 1;
