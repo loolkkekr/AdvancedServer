@@ -535,16 +535,14 @@ bool server_worker(Server* server)
 				if (api_report_timer >= 2000.0) 
 				{
 					bool is_ingame = (server->state == ST_GAME);
-					// ДОБАВИТЬ: проверка на блокировку (≤2 секунд до старта)
-					bool is_locked = (server->state == ST_LOBBY && 
-									server->lobby.countdown_sec != NO_COUNTDOWN && 
-									server->lobby.countdown_sec <= 2);
+					bool is_locked = (server->state != ST_LOBBY) || 
+									(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
 					
 					report_status_to_master(
 						g_config.server_config.networking.port, 
 						server->peers.noitems, 
 						is_ingame,
-						is_locked  // Новый параметр
+						is_locked
 					);
 					api_report_timer = 0;
 				}
