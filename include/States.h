@@ -41,6 +41,8 @@ typedef struct Entity
 #define CMD_VM 59505
 #define CMD_START 1770248296
 #define CMD_REFRESH 3384196449
+#define NO_COUNTDOWN 92
+#define COUNTDOWN 91
 
 bool lobby_init				(Server* server);
 bool lobby_state_join		(PeerData* v);
