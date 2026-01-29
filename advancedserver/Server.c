@@ -42,17 +42,14 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(int port, int players, int ingame)
+void report_status_to_master(int port, int players, int ingame, bool locked)
 {
-    // Адрес локального API
     const char* api_ip = "127.0.0.1";
     int api_port = 5010;
 
-    // Создаем сокет
     SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == INVALID_SOCKET) return;
 
-    // Настройка адреса
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(api_port);
@@ -62,20 +59,18 @@ void report_status_to_master(int port, int players, int ingame)
     inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
 #endif
 
-    // Подключение (таймаут можно добавить через setsockopt, но здесь пропустим для краткости)
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
     {
         closesocket(sock);
         return;
     }
 
-    // Формируем JSON тело
-	
-    char json_body[128];
-    snprintf(json_body, sizeof(json_body), "{\"port\": %d, \"players\": %d, \"ingame\": %s}", 
-             port, players, ingame ? "true" : "false");
+    // Добавлено поле locked в JSON
+    char json_body[256];
+    snprintf(json_body, sizeof(json_body), 
+             "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s}", 
+             port, players, ingame ? "true" : "false", locked ? "true" : "false");
 
-    // Формируем HTTP запрос
     char request[512];
     snprintf(request, sizeof(request),
              "POST /update_status HTTP/1.1\r\n"
@@ -87,12 +82,10 @@ void report_status_to_master(int port, int players, int ingame)
              "%s",
              api_ip, api_port, strlen(json_body), json_body);
 
-    // Отправка
     send(sock, request, (int)strlen(request), 0);
-
-    // Закрытие
     closesocket(sock);
 }
+
 // -----------------------------
 
 bool peer_identity_process(PeerData* v, const char* addr, bool is_banned, uint64_t timeout, bool do_timeout)
@@ -539,13 +532,22 @@ bool server_worker(Server* server)
                 
                 // --- API REPORT LOGIC ---
                 // Отправляем статус каждые 2000 мс (2 секунды)
-                if (api_report_timer >= 2000.0) 
-                {
-                    bool is_ingame = (server->state == ST_GAME);
-                    // Вызываем нашу функцию отправки HTTP
-                    report_status_to_master(g_config.server_config.networking.port, server->peers.noitems, is_ingame);
-                    api_report_timer = 0;
-                }
+				if (api_report_timer >= 2000.0) 
+				{
+					bool is_ingame = (server->state == ST_GAME);
+					// ДОБАВИТЬ: проверка на блокировку (≤2 секунд до старта)
+					bool is_locked = (server->state == ST_LOBBY && 
+									server->lobby.countdown_sec != NO_COUNTDOWN && 
+									server->lobby.countdown_sec <= 2);
+					
+					report_status_to_master(
+						g_config.server_config.networking.port, 
+						server->peers.noitems, 
+						is_ingame,
+						is_locked  // Новый параметр
+					);
+					api_report_timer = 0;
+				}
                 // server->delta обычно 1, если мы в цикле fixed update.
                 // TICKSPERSEC = 60. 2000ms = 2 сек. 
                 // Здесь time_end возвращает миллисекунды (обычно), так что:
