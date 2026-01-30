@@ -723,7 +723,7 @@ bool lobby_state_tick(Server* server)
             {
                 char buffer[256];
                 // Используем цвета для красоты (GRN - зеленый, RED - красный для цифры)
-                snprintf(buffer, 256, CLRCODE_GRN "игра начнется через " CLRCODE_RED "%d" CLRCODE_GRN " сек.", server->lobby.countdown_sec);
+                snprintf(buffer, 256, CLRCODE_GRN "The game will begin in " CLRCODE_RED "%d" CLRCODE_GRN " secs.", server->lobby.countdown_sec);
                 server_broadcast_msg(server, 0, buffer);
             }
 
