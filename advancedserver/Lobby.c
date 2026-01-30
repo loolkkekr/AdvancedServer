@@ -103,6 +103,8 @@ bool lobby_check_countdown(Server* server)
 			// ---> НОВОЕ: Сообщение для 2 игроков <---
 			if (server->peers.noitems == 2)
 			{
+				server_broadcast_msg(server, 0, CLRCODE_GRN "Game start time is " CLRCODE_RED "90 seconds" CLRCODE_GRN ", since there are");
+				server_broadcast_msg(server, 0, CLRCODE_GRN "only " CLRCODE_RED "2 players" CLRCODE_GRN " in the lobby.");
 				server_broadcast_msg(server, 0, CLRCODE_YLW "Game start time is " CLRCODE_RED "90 seconds" CLRCODE_YLW ", since there are");
 				server_broadcast_msg(server, 0, CLRCODE_YLW "only " CLRCODE_RED "2 players" CLRCODE_YLW " in the lobby.");
 			}
@@ -117,7 +119,6 @@ bool lobby_check_countdown(Server* server)
 			// Можно обновить тики, чтобы секунда начиналась заново
 			server->lobby.countdown = TICKSPERSEC; 
 		}
-
 		// Логика отправки клиенту
 		// Если таймер идет и осталось 5 или меньше секунд — обновляем визуализацию
 		if (server->lobby.countdown_sec != NO_COUNTDOWN && server->lobby.countdown_sec <= 5)
