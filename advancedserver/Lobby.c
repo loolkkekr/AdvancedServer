@@ -429,28 +429,28 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 						break;
 					}
 
-					if (hash == CMD_VM) {
-						int ind;
-						if (sscanf(msg.value, ":vm %d", &ind) <= 0)
-						{
-							RAssert(server_send_msg(v->server, v->peer, CLRCODE_RED "example:~ :vm 1"));
-							break;
-						}
+					//if (hash == CMD_VM) {
+						//int ind;
+						//if (sscanf(msg.value, ":vm %d", &ind) <= 0)
+						//{
+						//	RAssert(server_send_msg(v->server, v->peer, CLRCODE_RED "example:~ :vm 1"));
+						//	break;
+						//}
 
-						ind--;
-						if (ind < 0 || ind >= MAP_COUNT)
-						{
-							char msg[128];
-							snprintf(msg, 128, CLRCODE_RED "map should be between 1 and %d", MAP_COUNT);
-							RAssert(server_send_msg(v->server, v->peer, msg));
-							break;
-						}
+						//ind--;
+						//if (ind < 0 || ind >= MAP_COUNT)
+						//{
+						//	char msg[128];
+						//	snprintf(msg, 128, CLRCODE_RED "map should be between 1 and %d", MAP_COUNT);
+						//	RAssert(server_send_msg(v->server, v->peer, msg));
+						//	break;
+						//}
 
-						v->server->lobby.voting_map = ind;
+						//v->server->lobby.voting_map = ind;
 
-					} else if (hash == CMD_VP) {
-						v->server->lobby.voting_map = 20;
-					}
+					//} else if (hash == CMD_VP) {
+						//v->server->lobby.voting_map = 20;
+					//}
 
 					char buffer[356];
 					snprintf(buffer, 356, "%s~ " CLRCODE_YLW "started map vote for %s" CLRCODE_RST ".", v->nickname.value, g_mapList[v->server->lobby.voting_map].name);
