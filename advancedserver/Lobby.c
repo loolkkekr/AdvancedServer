@@ -90,21 +90,20 @@ bool lobby_check_countdown(Server* server)
 	else if (server->peers.noitems == 4) target_time = 41;
 	else if (server->peers.noitems == 3) target_time = 61;
 	// else if (server->peers.noitems == 1) target_time = 7;
-	target_time = 9999;
+	//target_time = 9999;
 	// Если есть хотя бы 2 игрока
 	if (server->peers.noitems >= 2)
 	{
 		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
 		if (server->lobby.countdown_sec == NO_COUNTDOWN)
 		{
+			arget_time = 9999;
 			server->lobby.countdown = TICKSPERSEC;
 			server->lobby.countdown_sec = target_time;
 
 			// ---> НОВОЕ: Сообщение для 2 игроков <---
 			if (server->peers.noitems == 2)
 			{
-				server_broadcast_msg(server, 0, CLRCODE_GRN "Game start time is " CLRCODE_RED "90 seconds" CLRCODE_GRN ", since there are");
-				server_broadcast_msg(server, 0, CLRCODE_GRN "only " CLRCODE_RED "2 players" CLRCODE_GRN " in the lobby.");
 				server_broadcast_msg(server, 0, CLRCODE_YLW "Game start time is " CLRCODE_RED "90 seconds" CLRCODE_YLW ", since there are");
 				server_broadcast_msg(server, 0, CLRCODE_YLW "only " CLRCODE_RED "2 players" CLRCODE_YLW " in the lobby.");
 			}
@@ -119,6 +118,7 @@ bool lobby_check_countdown(Server* server)
 			// Можно обновить тики, чтобы секунда начиналась заново
 			server->lobby.countdown = TICKSPERSEC; 
 		}
+
 		// Логика отправки клиенту
 		// Если таймер идет и осталось 5 или меньше секунд — обновляем визуализацию
 		if (server->lobby.countdown_sec != NO_COUNTDOWN && server->lobby.countdown_sec <= 5)
@@ -436,14 +436,15 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 						break;
 					}
 
-					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
-					break;
 					if (!vote_init(v->server, &v->server->lobby.vote, VOTE_MAP, 0))
 					{
 						server_send_msg(v->server, v->peer, CLRCODE_RED "not enough participants.");
 						break;
 					}
 
+					
+					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
+					break;
 					//if (hash == CMD_VM) {
 						//int ind;
 						//if (sscanf(msg.value, ":vm %d", &ind) <= 0)
