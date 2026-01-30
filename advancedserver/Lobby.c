@@ -229,6 +229,7 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
                     server_send_msg(v->server, v->peer, CLRCODE_GRN "you've got root perms on this server" CLRCODE_RST);
                     break;
             }
+			break; //
 		}
 
 		case CLIENT_CHAT_MESSAGE:

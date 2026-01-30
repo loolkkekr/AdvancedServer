@@ -846,13 +846,12 @@ bool server_cmd_handle(Server* server, unsigned long hash, PeerData* v, String* 
         }
 		case CMD_AUTOSTART:
 		{
-			if (v->op < 2)  // Только MODERATOR (2) или OWNER (3)
+			if (v->op < 2)
 			{
 				RAssert(server_send_msg(v->server, v->peer, CLRCODE_RED "your permission level is too low"));
 				break;
 			}
 
-			// Переключаем состояние
 			v->server->lobby.autostart_disabled = !v->server->lobby.autostart_disabled;
 			
 			char buffer[256];
@@ -860,7 +859,7 @@ bool server_cmd_handle(Server* server, unsigned long hash, PeerData* v, String* 
 			
 			if (v->server->lobby.autostart_disabled)
 			{
-				// Автостарт отключен - останавливаем текущий таймер если он есть
+				// Отменяем текущий таймер
 				if (v->server->lobby.countdown_sec != NO_COUNTDOWN)
 				{
 					v->server->lobby.countdown_sec = NO_COUNTDOWN;
@@ -868,16 +867,15 @@ bool server_cmd_handle(Server* server, unsigned long hash, PeerData* v, String* 
 					lobby_send_countdown(v->server);
 				}
 				
-				snprintf(buffer, 256, CLRCODE_RED "Game auto-start was disabled by " CLRCODE_YLW "%s " CLRCODE_GRN "%s" CLRCODE_RST, 
+				snprintf(buffer, 256, CLRCODE_RED "Game auto-start was cancelled by " CLRCODE_YLW "%s " CLRCODE_GRN "%s" CLRCODE_RST, 
 						role, v->nickname.value);
 			}
 			else
 			{
-				// Автостарт включен - проверяем можно ли запустить таймер сразу
 				snprintf(buffer, 256, CLRCODE_GRN "Game auto-start was enabled by " CLRCODE_YLW "%s " CLRCODE_GRN "%s" CLRCODE_RST, 
 						role, v->nickname.value);
 				
-				// Пробуем запустить таймер если игроков достаточно
+				// Пробуем запустить таймер сразу
 				lobby_check_countdown(v->server);
 			}
 			
