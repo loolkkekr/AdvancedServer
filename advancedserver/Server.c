@@ -10,7 +10,6 @@
 #include <States.h>
 #include <Packet.h>
 #include <ctype.h>
-#include <Lobby.h>
 #include <io/Threads.h>
 #include <io/Time.h>
 #include <stdio.h>
