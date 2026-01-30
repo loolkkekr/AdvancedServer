@@ -3,12 +3,104 @@
 #include <Server.h>
 #include <Colors.h>
 #include <States.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #ifdef _WIN32
-    #include <windows.h> // Для Sleep()
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
 #else
-    #include <unistd.h>  // Для usleep()
+    #include <sys/socket.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+    #include <netdb.h>
+    #define INVALID_SOCKET -1
+    #define SOCKET_ERROR -1
+    #define closesocket close
+    typedef int SOCKET;
 #endif
 
+// Порт API, который указан в Python скрипте (API_PORT = 5010)
+#define MASTER_API_PORT 5010
+#define MASTER_API_HOST "127.0.0.1"
+
+// Функция запрашивает у Мастера новый порт для лобби
+uint32_t request_next_lobby_port() 
+{
+    SOCKET sock;
+    struct sockaddr_in server_addr;
+    char send_buf[256];
+    char recv_buf[512];
+    int bytes_received;
+    uint32_t target_port = 0;
+
+    // Инициализация Winsock для Windows
+    #ifdef _WIN32
+        WSADATA wsaData;
+        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) return 0;
+    #endif
+
+    sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        #ifdef _WIN32
+            WSACleanup();
+        #endif
+        return 0;
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(MASTER_API_PORT);
+    // Преобразование IP
+    if (inet_pton(AF_INET, MASTER_API_HOST, &server_addr.sin_addr) <= 0) {
+        closesocket(sock);
+        #ifdef _WIN32
+            WSACleanup();
+        #endif
+        return 0;
+    }
+
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        closesocket(sock);
+        #ifdef _WIN32
+            WSACleanup();
+        #endif
+        return 0;
+    }
+
+    // Формируем простой HTTP GET запрос
+    snprintf(send_buf, sizeof(send_buf), 
+        "GET /find_lobby HTTP/1.0\r\n"
+        "Host: %s\r\n"
+        "Connection: close\r\n\r\n", 
+        MASTER_API_HOST);
+
+    send(sock, send_buf, (int)strlen(send_buf), 0);
+
+    // Читаем ответ
+    bytes_received = recv(sock, recv_buf, sizeof(recv_buf) - 1, 0);
+    if (bytes_received > 0) {
+        recv_buf[bytes_received] = '\0';
+        
+        // Ищем конец заголовков HTTP (двойной перенос строки)
+        char* body = strstr(recv_buf, "\r\n\r\n");
+        if (body) {
+            body += 4; // Пропускаем \r\n\r\n
+            target_port = (uint32_t)atoi(body);
+        } else {
+            // Если заголовков нет (странно, но попробуем парсить всё)
+            target_port = (uint32_t)atoi(recv_buf); 
+        }
+    }
+
+    closesocket(sock);
+    #ifdef _WIN32
+        WSACleanup();
+    #endif
+
+    return target_port;
+}
 
 #define PLRSTATE_ESCAPED 4
 #define PLRSTATE_ALIVE 3
@@ -142,7 +234,7 @@ bool results_init(Server* server)
 
 bool results_uninit(Server* server)
 {
-    // 1. Очистка сущностей (оставляем как было)
+    // 1. Очистка сущностей
     for (size_t i = 0; i < server->game.entities.capacity; i++)
     {
         Entity* entity = (Entity*)server->game.entities.ptr[i];
@@ -151,7 +243,7 @@ bool results_uninit(Server* server)
     }
     dylist_free(&server->game.entities);
 
-    // 2. Очистка списка вышедших игроков (оставляем как было)
+    // 2. Очистка списка вышедших игроков
     for (size_t i = 0; i < server->game.left.capacity; i++)
     {
         PeerData* player = (PeerData*)server->game.left.ptr[i];
@@ -160,45 +252,50 @@ bool results_uninit(Server* server)
     }
     dylist_free(&server->game.left);
 
-    // 3. --- НОВАЯ ЛОГИКА ЗАВЕРШЕНИЯ ---
-    
-    // Сначала "бросаем" всех в лобби. 
-    // Функция lobby_init сбросит состояние и отправит клиентам пакеты лобби.
+    // 3. --- ПЕРЕХОД В НОВОЕ ЛОББИ ---
+
+    // Сбрасываем состояние сервера в лобби (чтобы клиенты увидели меню, пока ждут)
     lobby_init(server);
+    if (server->host) enet_host_flush(server->host);
 
-    // Принудительно отправляем пакеты прямо сейчас, чтобы клиенты увидели экран лобби
-    if (server->host) {
-        enet_host_flush(server->host);
-    }
-
-    // Ждем 1 секунду, пока игроки находятся в лобби
     #ifdef _WIN32
-        Sleep(1000);
+        Sleep(500); // Небольшая пауза
     #else
-        usleep(1000000); // 1000000 мкс = 1 сек
+        usleep(500000);
     #endif
 
-    // Теперь создаем пакет перенаправления на Мастер-сервер
+    // ЗАПРОС К МАСТЕР-СЕРВЕРУ ЧЕРЕЗ API
+    Info("Requesting new lobby port from Master Server...");
+    uint32_t next_lobby_port = request_next_lobby_port();
+
+    if (next_lobby_port == 0) {
+        Warn("Failed to get lobby from API! Fallback to Master Port: %d", MASTER_SERVER_PORT);
+        next_lobby_port = MASTER_SERVER_PORT;
+    } else {
+        Info("Master Server assigned next lobby: %d", next_lobby_port);
+    }
+
+    // Создаем пакет перенаправления
     Packet pack;
     PacketCreate(&pack, SERVER_LOBBY_CHANGELOBBY);
-    PacketWrite(&pack, packet_write32, MASTER_SERVER_PORT); // Отправляем на 8606
+    PacketWrite(&pack, packet_write32, next_lobby_port); 
     
-    // Рассылаем всем игрокам
+    // Рассылаем всем
     server_broadcast(server, &pack, true);
 
-    // Снова принудительно отправляем (флашим) пакет редиректа
+    // Флашим пакеты
     if (server->host) {
         enet_host_flush(server->host);
     }
 
-    // Ждем полсекунды, чтобы пакеты точно ушли по сети перед закрытием
+    // Ждем, чтобы пакеты точно ушли
     #ifdef _WIN32
-        Sleep(500);
+        Sleep(1000); // 1 секунда на отправку и обработку клиентом
     #else
-        usleep(500000); // 500ms
+        usleep(1000000);
     #endif
 
-    // Выставляем флаг остановки сервера.
+    // Выставляем флаг остановки текущего процесса сервера
     server->running = false; 
 
     return true; 
