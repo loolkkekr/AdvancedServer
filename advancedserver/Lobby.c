@@ -521,9 +521,32 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 				}
 			}
 
-            Info("%s " LOG_RST "(id %d): %s", v->nickname.value, v->id, msg.value);
+			Info("%s " LOG_RST "(id %d): %s", v->nickname.value, v->id, msg.value);
+            
             if(!ignore && g_config.states.lobby_misc.apply_textchat_fixes)
-                server_broadcast_msg(v->server, v->id, msg.value);
+            {
+                // Проверяем уровень прав для добавления префикса
+                if (v->op == 3) 
+                {
+                    // OWNER (Красный)
+                    char buffer[256];
+                    snprintf(buffer, 256, CLRCODE_RED "[OWNER] " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
+                    // Отправляем от ID 0 (Server), чтобы отобразился наш отформатированный текст
+                    server_broadcast_msg(v->server, 0, buffer);
+                }
+                else if (v->op == 2) 
+                {
+                    // MODERATOR (Лаймовый/Зеленый)
+                    char buffer[256];
+                    snprintf(buffer, 256, CLRCODE_GRN "[MODERATOR] " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
+                    server_broadcast_msg(v->server, 0, buffer);
+                }
+                else 
+                {
+                    // Обычный игрок
+                    server_broadcast_msg(v->server, v->id, msg.value);
+                }
+            }
 			break;
 		}
 
