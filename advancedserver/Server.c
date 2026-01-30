@@ -125,8 +125,6 @@ void fetch_lobby_status_from_master(void)
         return;
     }
 
-    // Запрашиваем статус всех лобби у мастера
-    // Нужно добавить эндпоинт /get_all_status в Python сервер
     const char* request = "GET /get_all_status HTTP/1.1\r\n"
                          "Host: 127.0.0.1:5010\r\n"
                          "Connection: close\r\n\r\n";
@@ -134,15 +132,19 @@ void fetch_lobby_status_from_master(void)
     send(sock, request, strlen(request), 0);
 
     char response[4096] = {0};
+    char buffer[1024];
     int total = 0;
     int received;
-    while ((received = recv(sock, headers, sizeof(headers) - 1, 0)) > 0)
+    
+    while ((received = recv(sock, buffer, sizeof(buffer) - 1, 0)) > 0)
     {
         if (total + received >= sizeof(response) - 1) break;
-        memcpy(response + total, headers, received);
+        memcpy(response + total, buffer, received);
         total += received;
     }
     closesocket(sock);
+
+    if (total == 0) return;
 
     // Парсим JSON (пропускаем HTTP headers)
     char* json_start = strstr(response, "\r\n\r\n");
@@ -153,25 +155,23 @@ void fetch_lobby_status_from_master(void)
     if (!root) return;
 
     MutexLock(lobby_status_mut);
-    {
-        if (lobby_status_list) cJSON_Delete(lobby_status_list);
-        lobby_status_list = root; // Сохраняем список
-    }
+    if (lobby_status_list) cJSON_Delete(lobby_status_list);
+    lobby_status_list = root;
     MutexUnlock(lobby_status_mut);
 }
 
 void notify_waiting_players(Server* server)
 {
-    // Проверяем что в лобби только 1 игрок
+    // Только для лобби с 1 игроком
     if (server->peers.noitems != 1)
         return;
 
-    // Находим единственного игрока
+    // Находим игрока
     PeerData* waiting_player = NULL;
     for (size_t i = 0; i < server->peers.capacity; i++)
     {
         PeerData* peer = (PeerData*)server->peers.ptr[i];
-        if (peer && peer->in_game)
+        if (peer && peer->verified)
         {
             waiting_player = peer;
             break;
@@ -181,45 +181,43 @@ void notify_waiting_players(Server* server)
     if (!waiting_player)
         return;
 
-    // Получаем статус других лобби
+    // Собираем статистику
     int total_players_ingame = 0;
     int min_time_remaining = INT_MAX;
     bool found_ingame = false;
 
     MutexLock(lobby_status_mut);
+    if (lobby_status_list && cJSON_IsArray(lobby_status_list))
     {
-        if (lobby_status_list && cJSON_IsArray(lobby_status_list))
+        int count = cJSON_GetArraySize(lobby_status_list);
+        for (int i = 0; i < count; i++)
         {
-            int count = cJSON_GetArraySize(lobby_status_list);
-            for (int i = 0; i < count; i++)
+            cJSON* item = cJSON_GetArrayItem(lobby_status_list, i);
+            if (!item) continue;
+
+            cJSON* j_port = cJSON_GetObjectItem(item, "port");
+            cJSON* j_players = cJSON_GetObjectItem(item, "players");
+            cJSON* j_ingame = cJSON_GetObjectItem(item, "ingame");
+
+            if (!j_port || !j_players || !j_ingame) continue;
+
+            int port = j_port->valueint;
+            int players = j_players->valueint;
+            bool ingame = cJSON_IsTrue(j_ingame);
+
+            // Пропускаем текущее лобби
+            if (port == g_config.server_config.networking.port)
+                continue;
+
+            if (ingame && players > 0)
             {
-                cJSON* item = cJSON_GetArrayItem(lobby_status_list, i);
-                if (!item) continue;
+                total_players_ingame += players;
+                found_ingame = true;
 
-                cJSON* j_port = cJSON_GetObjectItem(item, "port");
-                cJSON* j_players = cJSON_GetObjectItem(item, "players");
-                cJSON* j_ingame = cJSON_GetObjectItem(item, "ingame");
                 cJSON* j_time = cJSON_GetObjectItem(item, "time_remaining");
-
-                if (!j_port || !j_players || !j_ingame) continue;
-
-                int port = j_port->valueint;
-                int players = j_players->valueint;
-                bool ingame = cJSON_IsTrue(j_ingame);
-
-                // Пропускаем наше текущее лобби
-                if (port == g_config.server_config.networking.port)
-                    continue;
-
-                if (ingame && players > 0)
-                {
-                    total_players_ingame += players;
-                    found_ingame = true;
-
-                    int time_remaining = j_time ? j_time->valueint : 5; // По умолчанию 5 мин
-                    if (time_remaining < min_time_remaining)
-                        min_time_remaining = time_remaining;
-                }
+                int time_remaining = j_time ? j_time->valueint : 5;
+                if (time_remaining < min_time_remaining)
+                    min_time_remaining = time_remaining;
             }
         }
     }
