@@ -37,6 +37,9 @@
 #endif
 // -----------------------------
 
+#define NO_COUNTDOWN 92
+extern bool lobby_send_countdown(Server* server);
+extern bool lobby_check_countdown(Server* server);
 cJSON* ip_addr_list = NULL;
 Mutex ip_addr_mut;
 
@@ -854,7 +857,7 @@ bool server_cmd_handle(Server* server, unsigned long hash, PeerData* v, String* 
 
 			v->server->lobby.autostart_disabled = !v->server->lobby.autostart_disabled;
 			
-			char buffer[256];
+			char buffer[512];
 			const char* role = (v->op == 3) ? "OWNER" : "MODERATOR";
 			
 			if (v->server->lobby.autostart_disabled)
