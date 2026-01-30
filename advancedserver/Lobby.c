@@ -523,31 +523,41 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 
 			Info("%s " LOG_RST "(id %d): %s", v->nickname.value, v->id, msg.value);
             
-            if(!ignore && g_config.states.lobby_misc.apply_textchat_fixes)
+			if(!ignore && g_config.states.lobby_misc.apply_textchat_fixes)
             {
                 // Проверяем уровень прав для добавления префикса
-                if (v->op == 3) 
+                if (v->op == 3 || v->op == 2) 
                 {
-                    // OWNER (Красный)
                     char buffer[256];
-                    snprintf(buffer, 256, CLRCODE_RED "( OWNER ) " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
-                    // Отправляем от ID 0 (Server), чтобы отобразился наш отформатированный текст
-                    server_broadcast_msg(v->server, 0, buffer);
-                }
-                else if (v->op == 2) 
-                {
-                    // MODERATOR (Лаймовый/Зеленый)
-                    char buffer[256];
-                    snprintf(buffer, 256, CLRCODE_GRN "( MODERATOR ) " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
-                    server_broadcast_msg(v->server, 0, buffer);
+                    
+                    if (v->op == 3)
+                    {
+                         // OWNER (Красный)
+                        snprintf(buffer, 256, CLRCODE_RED "( OWNER ) " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
+                    }
+                    else
+                    {
+                        // MODERATOR (Лаймовый/Зеленый)
+                        snprintf(buffer, 256, CLRCODE_GRN "( MODERATOR ) " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
+                    }
+
+                    // Вместо server_broadcast_msg делаем цикл, чтобы исключить отправителя
+                    for (size_t i = 0; i < v->server->peers.capacity; i++)
+                    {
+                        PeerData* p = (PeerData*)v->server->peers.ptr[i];
+                        if (!p) continue;             // Пропускаем пустые слоты
+                        if (p->id == v->id) continue; // Пропускаем САМОГО СЕБЯ (отправителя)
+
+                        // Отправляем сообщение остальным
+                        server_send_msg(v->server, p->peer, buffer);
+                    }
                 }
                 else 
                 {
-                    // Обычный игрок
+                    // Обычный игрок (стандартная отправка)
                     server_broadcast_msg(v->server, v->id, msg.value);
                 }
             }
-			break;
 		}
 
 		case CLIENT_LOBBY_READY_STATE:
