@@ -49,7 +49,7 @@ typedef struct {
 
 static cJSON* lobby_status_list = NULL;
 Mutex lobby_status_mut;
-#define LOBBY_TIMEOUT_SEC 35
+#define LOBBY_INFO_TIMEOUT_SEC 40
 
 #define NO_COUNTDOWN 92
 extern bool lobby_send_countdown(Server* server);
@@ -59,7 +59,7 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(int port, int players, int ingame, bool locked, int time_remaining_min)
+void report_status_to_master(int port, int players, int ingame, bool locked, int time_remaining_sec)
 {
     const char* api_ip = "127.0.0.1";
     int api_port = 5010;
@@ -82,10 +82,11 @@ void report_status_to_master(int port, int players, int ingame, bool locked, int
         return;
     }
 
+    // Отправляем time_remaining в секундах для точности
     char json_body[256];
     snprintf(json_body, sizeof(json_body), 
              "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s, \"time_remaining\": %d}", 
-             port, players, ingame ? "true" : "false", locked ? "true" : "false", time_remaining_min);
+             port, players, ingame ? "true" : "false", locked ? "true" : "false", time_remaining_sec);
 
     char request[512];
     snprintf(request, sizeof(request),
@@ -215,7 +216,7 @@ void notify_waiting_players(Server* server)
                 found_ingame = true;
 
                 cJSON* j_time = cJSON_GetObjectItem(item, "time_remaining");
-                int time_remaining = j_time ? j_time->valueint : 5;
+                int time_remaining = j_time ? j_time->valueint : 3;
                 if (time_remaining < min_time_remaining)
                     min_time_remaining = time_remaining;
             }
@@ -711,17 +712,23 @@ bool server_worker(Server* server)
 					bool is_ingame = (server->state == ST_GAME);
 					bool is_locked = (server->state != ST_LOBBY) || 
 									(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
-					int time_remaining = 0;
-					if (server->state == ST_GAME && server->game.started && server->game.time_sec > 0)
+					int time_remaining_sec = 0;
+					if (server->state == ST_GAME && server->game.started)
 					{
-						time_remaining = (server->game.time_sec / 60) + 1;
+						time_remaining_sec = server->game.time_sec;
+						// Если таймер отключен (banana), берем sudden_death_timer как приблизительное время
+						if (g_config.states.gameplay.banana.disable_timer)
+						{
+							time_remaining_sec = g_config.states.gameplay.sudden_death_timer - (int)(server->game.elapsed / TICKSPERSEC);
+							if (time_remaining_sec < 0) time_remaining_sec = 0;
+						}
 					}
 					report_status_to_master(
 						g_config.server_config.networking.port, 
 						server->peers.noitems, 
 						is_ingame,
 						is_locked,
-						time_remaining  // ДОБАВИТЬ ЭТОТ ПАРАМЕТР
+						time_remaining_sec  // ДОБАВИТЬ ЭТОТ ПАРАМЕТР
 					);
 					api_report_timer = 0;
 				}
