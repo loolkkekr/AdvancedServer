@@ -196,7 +196,7 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 			PacketCreate(&pack, SERVER_LOBBY_CORRECT);
 			RAssert(packet_send(v->peer, &pack, true));
 
-            char msg[100];
+            //char msg[100];
             //if(g_config.server_config.networking.server_count >= 2){
 				//server_send_msg(v->server, v->peer, UPPER_BRACKET);
 				//snprintf(msg, 100, "hosted by " CLRCODE_PUR  "%s" CLRCODE_RST, g_config.states.lobby_misc.hosts_name);
@@ -229,6 +229,7 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
                     server_send_msg(v->server, v->peer, CLRCODE_GRN "you've got root perms on this server" CLRCODE_RST);
                     break;
             }
+			break;
 		}
 
 		case CLIENT_CHAT_MESSAGE:
