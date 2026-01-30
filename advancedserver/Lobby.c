@@ -197,20 +197,20 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 			RAssert(packet_send(v->peer, &pack, true));
 
             char msg[100];
-            if(g_config.server_config.networking.server_count >= 2){
-				server_send_msg(v->server, v->peer, UPPER_BRACKET);
-				snprintf(msg, 100, "hosted by " CLRCODE_PUR  "%s" CLRCODE_RST, g_config.states.lobby_misc.hosts_name);
-				server_send_msg(v->server, v->peer, msg);
-				snprintf(msg, 100, "server " CLRCODE_RED "%d" CLRCODE_RST " of " CLRCODE_BLU "%d" CLRCODE_RST, v->server->id + 1, g_config.server_config.networking.server_count);
-				server_send_msg(v->server, v->peer, msg);
-				server_send_msg(v->server, v->peer, LOWER_BRACKET);
-            }
-			server_send_msg(v->server, v->peer, CLRCODE_GRA "type .help for command list~");
+            //if(g_config.server_config.networking.server_count >= 2){
+				//server_send_msg(v->server, v->peer, UPPER_BRACKET);
+				//snprintf(msg, 100, "hosted by " CLRCODE_PUR  "%s" CLRCODE_RST, g_config.states.lobby_misc.hosts_name);
+				//server_send_msg(v->server, v->peer, msg);
+				//snprintf(msg, 100, "server " CLRCODE_RED "%d" CLRCODE_RST " of " CLRCODE_BLU "%d" CLRCODE_RST, v->server->id + 1, g_config.server_config.networking.server_count);
+				//server_send_msg(v->server, v->peer, msg);
+				//server_send_msg(v->server, v->peer, LOWER_BRACKET);
+            //}
+			//server_send_msg(v->server, v->peer, CLRCODE_GRA "type .help for command list~");
 
-            if(g_config.states.lobby_misc.server_location[0] != '\0' && g_config.server_config.pairing.ping_limit != UINT16_MAX){
-                snprintf(msg, 100, "%s, required ping: %d or less", g_config.states.lobby_misc.server_location, g_config.server_config.pairing.ping_limit);
-                server_send_msg(v->server, v->peer, msg);
-            }
+            //if(g_config.states.lobby_misc.server_location[0] != '\0' && g_config.server_config.pairing.ping_limit != UINT16_MAX){
+                //snprintf(msg, 100, "%s, required ping: %d or less", g_config.states.lobby_misc.server_location, g_config.server_config.pairing.ping_limit);
+                //server_send_msg(v->server, v->peer, msg);
+            //}
 
             if(g_config.states.lobby_misc.message_of_the_day[0] != '\0')
                 server_send_msg(v->server, v->peer, g_config.states.lobby_misc.message_of_the_day);
