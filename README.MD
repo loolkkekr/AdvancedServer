@@ -1,3 +1,15 @@
+# WARNING!!!
+
+This is a fork of AdvancedServer, which is intended for my public TD2DR server. It is not intended for regular hosters. The public server IP is: 87.239.111.122
+
+
+
+
+
+
+
+
+
 # Intro
 Here's the Advanced Server, a modded version of BetterServer for Sonic.EXE: TD2DR.
 The server has more flexible configurations, functions, fixes and some IcedCoffee & ColdestTea's gamemodes.
