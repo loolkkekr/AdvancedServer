@@ -90,7 +90,7 @@ bool lobby_check_countdown(Server* server)
 	else if (server->peers.noitems == 4) target_time = 41;
 	else if (server->peers.noitems == 3) target_time = 61;
 	// else if (server->peers.noitems == 1) target_time = 7;
-	target_time = 9999;
+	//target_time = 9999;
 	// Если есть хотя бы 2 игрока
 	if (server->peers.noitems >= 2)
 	{
@@ -384,6 +384,8 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 				case CMD_VM:
 				case CMD_VP:
 				{
+					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
+					break;
                     if(g_config.states.lobby_misc.authoritarian_mode || g_config.states.lobby_misc.anonymous_mode)
                         break;
 
