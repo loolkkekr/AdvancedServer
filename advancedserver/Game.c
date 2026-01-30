@@ -1308,29 +1308,29 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			
 			int duration = 2000;
 			if(v->server->game.exe != v->id)
-				{
-					PacketRead(hp, packet, packet_read8, int8_t);
-					PacketRead(revival, packet, packet_read8, uint8_t);
-					PacketRead(rings, packet, packet_read16, int16_t);
-					PacketRead(flags, packet, packet_read8, uint8_t);
+			{
+				PacketRead(hp, packet, packet_read8, int8_t);
+				PacketRead(revival, packet, packet_read8, uint8_t);
+				PacketRead(rings, packet, packet_read16, int16_t);
+				PacketRead(flags, packet, packet_read8, uint8_t);
 
-					// --- ИСПРАВЛЕНИЕ: ПРОВЕРКА НА ЗОМБИ ---
-					// Если сервер считает, что игрок мертв/демонизирован, 
-					// но клиент шлет данные, не содержащие этих флагов (считает себя живым).
-					if ((v->plr.flags & (PLAYER_DEAD | PLAYER_DEMONIZED)) && !(flags & (PLAYER_DEAD | PLAYER_DEMONIZED)))
-					{
-						// Принудительно отправляем клиенту пакет о смерти, чтобы синхронизировать состояние
-						Packet state_pack;
-						PacketCreate(&state_pack, SERVER_PLAYER_DEATH_STATE);
-						PacketWrite(&state_pack, packet_write16, v->id);
-						PacketWrite(&state_pack, packet_write8, 1); // Dead = true
-						PacketWrite(&state_pack, packet_write8, 0); 
-						packet_send(v->peer, &state_pack, true);
-						
-						// Можно раскомментировать для отладки:
-						// Debug("Fixing zombie state for player %d", v->id);
-						return true; // Прерываем обработку, чтобы зомби не двигался
-					}
+				// --- ИСПРАВЛЕНИЕ: ПРОВЕРКА НА ЗОМБИ ---
+				// Если сервер считает, что игрок мертв/демонизирован, 
+				// но клиент шлет данные, не содержащие этих флагов (считает себя живым).
+				if ((v->plr.flags & (PLAYER_DEAD | PLAYER_DEMONIZED)) && !(flags & (PLAYER_DEAD | PLAYER_DEMONIZED)))
+				{
+					// Принудительно отправляем клиенту пакет о смерти, чтобы синхронизировать состояние
+					Packet state_pack;
+					PacketCreate(&state_pack, SERVER_PLAYER_DEATH_STATE);
+					PacketWrite(&state_pack, packet_write16, v->id);
+					PacketWrite(&state_pack, packet_write8, 1); // Dead = true
+					PacketWrite(&state_pack, packet_write8, 0); 
+					packet_send(v->peer, &state_pack, true);
+					
+					// Можно раскомментировать для отладки:
+					// Debug("Fixing zombie state for player %d", v->id);
+					return true; // Прерываем обработку, чтобы зомби не двигался
+				}
 				// ----------------------------------------
 
 				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED))
