@@ -711,12 +711,17 @@ bool server_worker(Server* server)
 					bool is_ingame = (server->state == ST_GAME);
 					bool is_locked = (server->state != ST_LOBBY) || 
 									(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
-					
+					int time_remaining = 0;
+					if (server->state == ST_GAME && server->game.started && server->game.time_sec > 0)
+					{
+						time_remaining = (server->game.time_sec / 60) + 1;
+					}
 					report_status_to_master(
 						g_config.server_config.networking.port, 
 						server->peers.noitems, 
 						is_ingame,
-						is_locked
+						is_locked,
+						time_remaining  // ДОБАВИТЬ ЭТОТ ПАРАМЕТР
 					);
 					api_report_timer = 0;
 				}
