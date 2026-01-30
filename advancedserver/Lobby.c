@@ -530,16 +530,16 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
                 {
                     // OWNER (Красный)
                     char buffer[256];
-                    snprintf(buffer, 256, CLRCODE_RED "[OWNER] " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
+                    snprintf(buffer, 256, CLRCODE_RED "( OWNER ) " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
                     // Отправляем от ID 0 (Server), чтобы отобразился наш отформатированный текст
-                    server_broadcast_msg(v->server, 0, buffer);
+                    server_broadcast_msg(v->server, v->id, buffer);
                 }
                 else if (v->op == 2) 
                 {
                     // MODERATOR (Лаймовый/Зеленый)
                     char buffer[256];
-                    snprintf(buffer, 256, CLRCODE_GRN "[MODERATOR] " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
-                    server_broadcast_msg(v->server, 0, buffer);
+                    snprintf(buffer, 256, CLRCODE_GRN "( MODERATOR ) " CLRCODE_RST "%s: %s", v->nickname.value, msg.value);
+                    server_broadcast_msg(v->server, v->id, buffer);
                 }
                 else 
                 {
