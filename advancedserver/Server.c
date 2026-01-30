@@ -45,11 +45,10 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(Server* server)
+void report_status_to_master(int port, int players, int ingame, bool locked)
 {
     const char* api_ip = "127.0.0.1";
     int api_port = 5010;
-    int port = g_config.server_config.networking.port;
 
     SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock == INVALID_SOCKET) return;
@@ -63,35 +62,19 @@ void report_status_to_master(Server* server)
     inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
 #endif
 
-    // Устанавливаем таймаут для получения ответа (чтобы игра не фризила)
-    #ifdef _WIN32
-        DWORD timeout = 200; // 200 ms
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof(timeout));
-    #else
-        struct timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = 200000;
-        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
-    #endif
-
     if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
     {
         closesocket(sock);
         return;
     }
 
-    // Сбор данных
-    int players = server->peers.noitems;
-    bool ingame = (server->state == ST_GAME);
-    bool locked = (server->state != ST_LOBBY) || (server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
-    int time_left = (server->state == ST_GAME) ? server->game.time_sec : 0;
-
-    char json_body[512];
+    // Добавлено поле locked в JSON
+    char json_body[256];
     snprintf(json_body, sizeof(json_body), 
-             "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s, \"time_left\": %d}", 
-             port, players, ingame ? "true" : "false", locked ? "true" : "false", time_left);
+             "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s}", 
+             port, players, ingame ? "true" : "false", locked ? "true" : "false");
 
-    char request[1024];
+    char request[512];
     snprintf(request, sizeof(request),
              "POST /update_status HTTP/1.1\r\n"
              "Host: %s:%d\r\n"
@@ -102,43 +85,7 @@ void report_status_to_master(Server* server)
              "%s",
              api_ip, api_port, strlen(json_body), json_body);
 
-    if (send(sock, request, (int)strlen(request), 0) != SOCKET_ERROR)
-    {
-        // Читаем ответ
-        char response[4096];
-        int bytes_received = recv(sock, response, sizeof(response) - 1, 0);
-        
-        if (bytes_received > 0)
-        {
-            response[bytes_received] = '\0';
-            
-            // Ищем начало JSON (пропускаем HTTP заголовки)
-            char* json_start = strchr(response, '{');
-            if (json_start)
-            {
-                cJSON* root = cJSON_Parse(json_start);
-                if (root)
-                {
-                    cJSON* messages = cJSON_GetObjectItem(root, "messages");
-                    if (messages && cJSON_IsArray(messages))
-                    {
-                        int msg_count = cJSON_GetArraySize(messages);
-                        for (int i = 0; i < msg_count; i++)
-                        {
-                            cJSON* item = cJSON_GetArrayItem(messages, i);
-                            if (cJSON_IsString(item))
-                            {
-                                // Отправляем сообщение в чат сервера (sender ID 0 - сервер)
-                                server_broadcast_msg(server, 0, item->valuestring);
-                            }
-                        }
-                    }
-                    cJSON_Delete(root);
-                }
-            }
-        }
-    }
-
+    send(sock, request, (int)strlen(request), 0);
     closesocket(sock);
 }
 
@@ -594,7 +541,12 @@ bool server_worker(Server* server)
 					bool is_locked = (server->state != ST_LOBBY) || 
 									(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
 					
-					report_status_to_master(server);
+					report_status_to_master(
+						g_config.server_config.networking.port, 
+						server->peers.noitems, 
+						is_ingame,
+						is_locked
+					);
 					api_report_timer = 0;
 				}
                 // server->delta обычно 1, если мы в цикле fixed update.
