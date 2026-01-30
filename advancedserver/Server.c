@@ -37,6 +37,7 @@
 #endif
 // -----------------------------
 
+#define CMD_AUTOSTART 3137096857
 #define NO_COUNTDOWN 92
 extern bool lobby_send_countdown(Server* server);
 extern bool lobby_check_countdown(Server* server);
