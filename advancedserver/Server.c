@@ -11,6 +11,7 @@
 #include <Packet.h>
 #include <ctype.h>
 #include <io/Threads.h>
+#include <limits.h>
 #include <io/Time.h>
 #include <stdio.h>
 #include <time.h>
@@ -42,9 +43,9 @@ typedef struct {
     int port;
     int players;
     bool ingame;
-    int time_remaining_min; // Время до конца игры в минутах
+    int time_remaining_min;
     time_t last_update;
-} LobbyStatus;
+} LobbyStatusInfo;
 
 static cJSON* lobby_status_list = NULL;
 Mutex lobby_status_mut;
@@ -58,7 +59,7 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(int port, int players, int ingame, bool locked)
+void report_status_to_master(int port, int players, int ingame, bool locked, int time_remaining_min)
 {
     const char* api_ip = "127.0.0.1";
     int api_port = 5010;
@@ -81,12 +82,10 @@ void report_status_to_master(int port, int players, int ingame, bool locked)
         return;
     }
 
-    // Добавлено поле locked в JSON
     char json_body[256];
     snprintf(json_body, sizeof(json_body), 
              "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s, \"time_remaining\": %d}", 
              port, players, ingame ? "true" : "false", locked ? "true" : "false", time_remaining_min);
-
 
     char request[512];
     snprintf(request, sizeof(request),
