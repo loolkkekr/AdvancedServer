@@ -465,18 +465,20 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 						//v->server->lobby.voting_map = 20;
 					//}
 
-					char buffer[356];
-					snprintf(buffer, 356, "%s~ " CLRCODE_YLW "started map vote for %s" CLRCODE_RST ".", v->nickname.value, g_mapList[v->server->lobby.voting_map].name);
+					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
+					break;
+					//char buffer[356];
+					//snprintf(buffer, 356, "%s~ " CLRCODE_YLW "started map vote for %s" CLRCODE_RST ".", v->nickname.value, g_mapList[v->server->lobby.voting_map].name);
 
-					server_broadcast_msg(v->server, 0, "-----------------------");
-					server_broadcast_msg(v->server, 0, buffer);
-					server_broadcast_msg(v->server, 0, "type " CLRCODE_GRN ".yes~ or ignore");
-					snprintf(buffer, 356, "results will be summarized in " CLRCODE_GRA "%d~ sec", g_config.states.lobby_misc.votekick.cooldown);
-					server_broadcast_msg(v->server, 0, buffer);
-					server_broadcast_msg(v->server, 0, "-----------------------");
+					//server_broadcast_msg(v->server, 0, "-----------------------");
+					//server_broadcast_msg(v->server, 0, buffer);
+					//server_broadcast_msg(v->server, 0, "type " CLRCODE_GRN ".yes~ or ignore");
+					//snprintf(buffer, 356, "results will be summarized in " CLRCODE_GRA "%d~ sec", g_config.states.lobby_misc.votekick.cooldown);
+					//server_broadcast_msg(v->server, 0, buffer);
+					//server_broadcast_msg(v->server, 0, "-----------------------");
 
-					vote_add(&v->server->lobby.vote, v->id);
-                    v->vote_cooldown = g_config.states.lobby_misc.votekick.cooldown * TICKSPERSEC;
+					//vote_add(&v->server->lobby.vote, v->id);
+                    //v->vote_cooldown = g_config.states.lobby_misc.votekick.cooldown * TICKSPERSEC;
 					break;
 				}
 
