@@ -127,6 +127,8 @@ bool lobby_check_countdown(Server* server)
 		}
 	}
 	// Если игроков нет (или остался 1) — сбрасываем
+	target_time = 999
+	server->lobby.countdown_sec = 999
 	else if (server->lobby.countdown_sec != NO_COUNTDOWN)
 	{
 		server->lobby.countdown = TICKSPERSEC;
