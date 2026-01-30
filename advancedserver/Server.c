@@ -86,7 +86,6 @@ void report_status_to_master(int port, int players, int ingame, bool locked)
     snprintf(json_body, sizeof(json_body), 
              "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s, \"time_remaining\": %d}", 
              port, players, ingame ? "true" : "false", locked ? "true" : "false", time_remaining_min);
-}
 
 
     char request[512];
