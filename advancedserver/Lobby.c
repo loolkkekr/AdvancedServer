@@ -658,17 +658,17 @@ bool lobby_state_tick(Server* server)
 				if (peer->vote_cooldown > 0)
 					peer->vote_cooldown -= server->delta;
 
-				if (!peer->ready)
-				{
-					peer->timeout += server->delta;
-					if ((int)peer->timeout % 60 == 0)
-						Debug("tick for %s: %f", peer->nickname.value, peer->timeout/60.0f);
+				//if (!peer->ready)
+				//{
+					//peer->timeout += server->delta;
+					//if ((int)peer->timeout % 60 == 0)
+						//Debug("tick for %s: %f", peer->nickname.value, peer->timeout/60.0f);
 
-                    if (peer->timeout >= g_config.states.lobby_misc.lobby_timeout_timer * TICKSPERSEC)
-						server_disconnect(server, peer->peer, DR_AFKTIMEOUT, NULL);
-				}
-				else
-					peer->timeout = 0;
+                    //if (peer->timeout >= g_config.states.lobby_misc.lobby_timeout_timer * TICKSPERSEC)
+						//server_disconnect(server, peer->peer, DR_AFKTIMEOUT, NULL);
+				//}
+				//else
+					//peer->timeout = 0;
 			}
 			break;
 		}
