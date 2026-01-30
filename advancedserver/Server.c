@@ -830,7 +830,6 @@ unsigned long server_cmd_parse(String* string)
 bool server_cmd_handle(Server* server, unsigned long hash, PeerData* v, String* msg)
 {
     Debug("Processing command with hash: %lu", hash);
-	Log("Processing command with hash: %lu", hash);
 
 	Packet pack;
 	switch(hash)
