@@ -90,7 +90,8 @@ bool lobby_check_countdown(Server* server)
 	else if (server->peers.noitems == 4) target_time = 41;
 	else if (server->peers.noitems == 3) target_time = 61;
 	// else if (server->peers.noitems == 1) target_time = 7;
-	// Если есть хотя бы 1 игрок
+	
+	// Если есть хотя бы 2 игрока
 	if (server->peers.noitems >= 2)
 	{
 		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
@@ -98,6 +99,13 @@ bool lobby_check_countdown(Server* server)
 		{
 			server->lobby.countdown = TICKSPERSEC;
 			server->lobby.countdown_sec = target_time;
+
+			// ---> НОВОЕ: Сообщение для 2 игроков <---
+			if (server->peers.noitems == 2)
+			{
+				server_broadcast_msg(server, 0, CLRCODE_GRN "Game start time is " CLRCODE_RED "90 seconds" CLRCODE_GRN ", since there are only " CLRCODE_RED "2 players" CLRCODE_GRN " in the lobby.");
+			}
+			// ----------------------------------------
 		}
 		// 2. Если таймер уже идет, но игроков стало больше и текущее время
 		// больше, чем допустимое для этого кол-ва игроков — сокращаем время.
@@ -116,7 +124,7 @@ bool lobby_check_countdown(Server* server)
 			RAssert(lobby_send_countdown(server));
 		}
 	}
-	// Если игроков нет — сбрасываем
+	// Если игроков нет (или остался 1) — сбрасываем
 	else if (server->lobby.countdown_sec != NO_COUNTDOWN)
 	{
 		server->lobby.countdown = TICKSPERSEC;
