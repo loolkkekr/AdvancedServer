@@ -35,7 +35,20 @@
     #define SOCKET_ERROR -1
     #define closesocket close
 #endif
+
 // -----------------------------
+
+typedef struct {
+    int port;
+    int players;
+    bool ingame;
+    int time_remaining_min; // Время до конца игры в минутах
+    time_t last_update;
+} LobbyStatus;
+
+static cJSON* lobby_status_list = NULL;
+Mutex lobby_status_mut;
+#define LOBBY_TIMEOUT_SEC 35
 
 #define NO_COUNTDOWN 92
 extern bool lobby_send_countdown(Server* server);
@@ -71,8 +84,10 @@ void report_status_to_master(int port, int players, int ingame, bool locked)
     // Добавлено поле locked в JSON
     char json_body[256];
     snprintf(json_body, sizeof(json_body), 
-             "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s}", 
-             port, players, ingame ? "true" : "false", locked ? "true" : "false");
+             "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s, \"time_remaining\": %d}", 
+             port, players, ingame ? "true" : "false", locked ? "true" : "false", time_remaining_min);
+}
+
 
     char request[512];
     snprintf(request, sizeof(request),
@@ -87,6 +102,157 @@ void report_status_to_master(int port, int players, int ingame, bool locked)
 
     send(sock, request, (int)strlen(request), 0);
     closesocket(sock);
+}
+
+void fetch_lobby_status_from_master(void)
+{
+    const char* api_ip = "127.0.0.1";
+    int api_port = 5010;
+
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) return;
+
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(api_port);
+#ifdef _WIN32
+    server_addr.sin_addr.s_addr = inet_addr(api_ip);
+#else
+    inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
+#endif
+
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
+    {
+        closesocket(sock);
+        return;
+    }
+
+    // Запрашиваем статус всех лобби у мастера
+    // Нужно добавить эндпоинт /get_all_status в Python сервер
+    const char* request = "GET /get_all_status HTTP/1.1\r\n"
+                         "Host: 127.0.0.1:5010\r\n"
+                         "Connection: close\r\n\r\n";
+    
+    send(sock, request, strlen(request), 0);
+
+    char response[4096] = {0};
+    int total = 0;
+    int received;
+    while ((received = recv(sock, headers, sizeof(headers) - 1, 0)) > 0)
+    {
+        if (total + received >= sizeof(response) - 1) break;
+        memcpy(response + total, headers, received);
+        total += received;
+    }
+    closesocket(sock);
+
+    // Парсим JSON (пропускаем HTTP headers)
+    char* json_start = strstr(response, "\r\n\r\n");
+    if (!json_start) return;
+    json_start += 4;
+
+    cJSON* root = cJSON_Parse(json_start);
+    if (!root) return;
+
+    MutexLock(lobby_status_mut);
+    {
+        if (lobby_status_list) cJSON_Delete(lobby_status_list);
+        lobby_status_list = root; // Сохраняем список
+    }
+    MutexUnlock(lobby_status_mut);
+}
+
+void notify_waiting_players(Server* server)
+{
+    // Проверяем что в лобби только 1 игрок
+    if (server->peers.noitems != 1)
+        return;
+
+    // Находим единственного игрока
+    PeerData* waiting_player = NULL;
+    for (size_t i = 0; i < server->peers.capacity; i++)
+    {
+        PeerData* peer = (PeerData*)server->peers.ptr[i];
+        if (peer && peer->in_game)
+        {
+            waiting_player = peer;
+            break;
+        }
+    }
+
+    if (!waiting_player)
+        return;
+
+    // Получаем статус других лобби
+    int total_players_ingame = 0;
+    int min_time_remaining = INT_MAX;
+    bool found_ingame = false;
+
+    MutexLock(lobby_status_mut);
+    {
+        if (lobby_status_list && cJSON_IsArray(lobby_status_list))
+        {
+            int count = cJSON_GetArraySize(lobby_status_list);
+            for (int i = 0; i < count; i++)
+            {
+                cJSON* item = cJSON_GetArrayItem(lobby_status_list, i);
+                if (!item) continue;
+
+                cJSON* j_port = cJSON_GetObjectItem(item, "port");
+                cJSON* j_players = cJSON_GetObjectItem(item, "players");
+                cJSON* j_ingame = cJSON_GetObjectItem(item, "ingame");
+                cJSON* j_time = cJSON_GetObjectItem(item, "time_remaining");
+
+                if (!j_port || !j_players || !j_ingame) continue;
+
+                int port = j_port->valueint;
+                int players = j_players->valueint;
+                bool ingame = cJSON_IsTrue(j_ingame);
+
+                // Пропускаем наше текущее лобби
+                if (port == g_config.server_config.networking.port)
+                    continue;
+
+                if (ingame && players > 0)
+                {
+                    total_players_ingame += players;
+                    found_ingame = true;
+
+                    int time_remaining = j_time ? j_time->valueint : 5; // По умолчанию 5 мин
+                    if (time_remaining < min_time_remaining)
+                        min_time_remaining = time_remaining;
+                }
+            }
+        }
+    }
+    MutexUnlock(lobby_status_mut);
+
+    if (!found_ingame || total_players_ingame == 0)
+        return;
+
+    // Отправляем сообщения
+    char msg[256];
+    
+    snprintf(msg, sizeof(msg), 
+        CLRCODE_YLW "Found %d player(s) currently in game!" CLRCODE_RST, 
+        total_players_ingame);
+    server_send_msg(server, waiting_player->peer, msg);
+
+    server_send_msg(server, waiting_player->peer, 
+        CLRCODE_GRN "They will automatically join this lobby after their game ends." CLRCODE_RST);
+
+    if (min_time_remaining != INT_MAX && min_time_remaining > 0)
+    {
+        snprintf(msg, sizeof(msg), 
+            CLRCODE_BLU "Estimated wait time: approximately %d min" CLRCODE_RST, 
+            min_time_remaining);
+        server_send_msg(server, waiting_player->peer, msg);
+    }
+    else
+    {
+        server_send_msg(server, waiting_player->peer, 
+            CLRCODE_BLU "Estimated wait time: less than 1 min" CLRCODE_RST);
+    }
 }
 
 // -----------------------------
@@ -381,7 +547,7 @@ bool peer_msg(PeerData* v, Packet* packet)
 bool server_worker(Server* server)
 {
 	srand((unsigned int)time(NULL));
-
+	
 	char thread_name[128];
 	snprintf(thread_name, 128, "Worker Thr %d", server->id);
 	ThreadVarSet(g_threadName, thread_name);
@@ -391,13 +557,22 @@ bool server_worker(Server* server)
 		ip_addr_list = cJSON_CreateObject();
 		RAssert(ip_addr_list);
 		MutexCreate(ip_addr_mut);
+		MutexCreate(lobby_status_mut); // ДОБАВИТЬ
 	}
-
 	TimeStamp ticker;
 	time_start(&ticker);
 
 	double next_tick = time_end(&ticker);
 	double heartbeat = 0.0;
+	int time_remaining = 0;
+	if (server->state == ST_GAME && server->game.started)
+	{
+		// Рассчитываем оставшееся время
+		int total_game_time = server->game.time_sec; // или g_config...
+		int elapsed = (int)(server->game.elapsed / TICKSPERSEC);
+		time_remaining = (total_game_time - elapsed) / 60 + 1;
+	}
+	double notify_timer = 0.0;
 	const double TARGET_FPS = 1000.0 / 60;
     
     // Переменная для таймера отправки API запросов
@@ -549,6 +724,15 @@ bool server_worker(Server* server)
 					);
 					api_report_timer = 0;
 				}
+				if (notify_timer >= 30000.0) // 30 секунд
+				{
+					// Обновляем статус других лобби (раз в 30 сек)
+					fetch_lobby_status_from_master();
+					notify_waiting_players(server);
+					notify_timer = 0;
+				}
+				notify_timer += (1000.0 / 60.0); // ~16.6ms
+				// ------------------------------------------
                 // server->delta обычно 1, если мы в цикле fixed update.
                 // TICKSPERSEC = 60. 2000ms = 2 сек. 
                 // Здесь time_end возвращает миллисекунды (обычно), так что:
