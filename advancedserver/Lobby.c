@@ -559,6 +559,7 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
                     server_broadcast_msg(v->server, v->id, msg.value);
                 }
             }
+			break;
 		}
 
 		case CLIENT_LOBBY_READY_STATE:

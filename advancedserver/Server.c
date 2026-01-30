@@ -870,7 +870,7 @@ bool server_cmd_handle(Server* server, unsigned long hash, PeerData* v, String* 
 					lobby_send_countdown(v->server);
 				}
 				
-				snprintf(buffer, 256, CLRCODE_RED "Game auto-start was disabled by " CLRCODE_YLW "%s " CLRCODE_GRN "%s" CLRCODE_RST, 
+				snprintf(buffer, 256, CLRCODE_RED "Game auto-start was cancelled by " CLRCODE_YLW "%s " CLRCODE_GRN "%s" CLRCODE_RST, 
 						role, v->nickname.value);
 			}
 			else
