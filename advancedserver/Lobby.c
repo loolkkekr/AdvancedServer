@@ -97,7 +97,7 @@ bool lobby_check_countdown(Server* server)
 		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
 		if (server->lobby.countdown_sec == NO_COUNTDOWN)
 		{
-			arget_time = 9999;
+			target_time = 9999;
 			server->lobby.countdown = TICKSPERSEC;
 			server->lobby.countdown_sec = target_time;
 
