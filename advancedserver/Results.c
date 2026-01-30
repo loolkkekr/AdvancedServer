@@ -3,6 +3,12 @@
 #include <Server.h>
 #include <Colors.h>
 #include <States.h>
+#ifdef _WIN32
+    #include <windows.h> // Для Sleep()
+#else
+    #include <unistd.h>  // Для usleep()
+#endif
+
 
 #define PLRSTATE_ESCAPED 4
 #define PLRSTATE_ALIVE 3
@@ -135,28 +141,50 @@ bool results_init(Server* server)
 
 bool results_uninit(Server* server)
 {
-	for (size_t i = 0; i < server->game.entities.capacity; i++)
-	{
-		Entity* entity = (Entity*)server->game.entities.ptr[i];
-		if (!entity)
-			continue;
+    // --- Очистка памяти (Старая логика) ---
+    for (size_t i = 0; i < server->game.entities.capacity; i++)
+    {
+        Entity* entity = (Entity*)server->game.entities.ptr[i];
+        if (!entity) continue;
+        free(entity);
+    }
+    dylist_free(&server->game.entities);
 
-		free(entity);
-	}
-	dylist_free(&server->game.entities);
+    for (size_t i = 0; i < server->game.left.capacity; i++)
+    {
+        PeerData* player = (PeerData*)server->game.left.ptr[i];
+        if (!player) continue;
+        free(player);
+    }
+    dylist_free(&server->game.left);
 
-	// Clean up after game
-	for (size_t i = 0; i < server->game.left.capacity; i++)
-	{
-		PeerData* player = (PeerData*)server->game.left.ptr[i];
-		if (!player)
-			continue;
+    // --- НОВАЯ ЛОГИКА: Редирект и Выключение ---
+    
+    Info("Game finished. Redirecting players to Master and shutting down...");
 
-		free(player);
-	}
-	dylist_free(&server->game.left);
+    // 1. Создаем пакет перенаправления на порт Мастера
+    Packet pack;
+    PacketCreate(&pack, SERVER_LOBBY_CHANGELOBBY);
+    PacketWrite(&pack, packet_write32, MASTER_SERVER_PORT);
+    
+    // 2. Отправляем всем (reliable = true)
+    server_broadcast(server, &pack, true);
 
-	return lobby_init(server);
+    // 3. Принудительно выталкиваем пакеты из буфера ENet, чтобы они ушли до закрытия сокета
+    enet_host_flush(server->host);
+
+    // 4. Пауза 0.5 сек, чтобы клиенты точно успели получить пакет перед разрывом соединения
+    #ifdef _WIN32
+        Sleep(500); 
+    #else
+        usleep(500000);
+    #endif
+
+    // 5. Останавливаем цикл сервера
+    // Это заставит server_worker выйти из while(server->running), и процесс завершится
+    server->running = false; 
+
+    return true; 
 }
 
 bool results_state_tick(Server* server)
