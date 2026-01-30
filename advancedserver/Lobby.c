@@ -90,7 +90,7 @@ bool lobby_check_countdown(Server* server)
 	else if (server->peers.noitems == 4) target_time = 41;
 	else if (server->peers.noitems == 3) target_time = 61;
 	// else if (server->peers.noitems == 1) target_time = 7;
-	
+	target_time = 99999;
 	// Если есть хотя бы 2 игрока
 	if (server->peers.noitems >= 2)
 	{
