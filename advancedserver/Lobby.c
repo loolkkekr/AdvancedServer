@@ -436,6 +436,8 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 						break;
 					}
 
+					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
+					break;
 					if (!vote_init(v->server, &v->server->lobby.vote, VOTE_MAP, 0))
 					{
 						server_send_msg(v->server, v->peer, CLRCODE_RED "not enough participants.");
@@ -464,9 +466,6 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 					//} else if (hash == CMD_VP) {
 						//v->server->lobby.voting_map = 20;
 					//}
-
-					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
-					break;
 					//char buffer[356];
 					//snprintf(buffer, 356, "%s~ " CLRCODE_YLW "started map vote for %s" CLRCODE_RST ".", v->nickname.value, g_mapList[v->server->lobby.voting_map].name);
 
