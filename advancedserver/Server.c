@@ -844,7 +844,46 @@ bool server_cmd_handle(Server* server, unsigned long hash, PeerData* v, String* 
 
             disaster_reboot();
         }
+		case CMD_AUTOSTART:
+		{
+			if (v->op < 2)  // Только MODERATOR (2) или OWNER (3)
+			{
+				RAssert(server_send_msg(v->server, v->peer, CLRCODE_RED "your permission level is too low"));
+				break;
+			}
 
+			// Переключаем состояние
+			v->server->lobby.autostart_disabled = !v->server->lobby.autostart_disabled;
+			
+			char buffer[256];
+			const char* role = (v->op == 3) ? "OWNER" : "MODERATOR";
+			
+			if (v->server->lobby.autostart_disabled)
+			{
+				// Автостарт отключен - останавливаем текущий таймер если он есть
+				if (v->server->lobby.countdown_sec != NO_COUNTDOWN)
+				{
+					v->server->lobby.countdown_sec = NO_COUNTDOWN;
+					v->server->lobby.countdown = TICKSPERSEC;
+					lobby_send_countdown(v->server);
+				}
+				
+				snprintf(buffer, 256, CLRCODE_RED "Game auto-start was disabled by " CLRCODE_YLW "%s " CLRCODE_GRN "%s" CLRCODE_RST, 
+						role, v->nickname.value);
+			}
+			else
+			{
+				// Автостарт включен - проверяем можно ли запустить таймер сразу
+				snprintf(buffer, 256, CLRCODE_GRN "Game auto-start was enabled by " CLRCODE_YLW "%s " CLRCODE_GRN "%s" CLRCODE_RST, 
+						role, v->nickname.value);
+				
+				// Пробуем запустить таймер если игроков достаточно
+				lobby_check_countdown(v->server);
+			}
+			
+			server_broadcast_msg(v->server, 0, buffer);
+			break;
+		}
 		case CMD_REFRESH:
 		{
 			if (v->op < 3)

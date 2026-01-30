@@ -92,7 +92,7 @@ bool lobby_check_countdown(Server* server)
 	// else if (server->peers.noitems == 1) target_time = 7;
 	//target_time = 99999;
 	// Если есть хотя бы 2 игрока
-	if (server->peers.noitems >= 2)
+	if (server->peers.noitems >= 2 && !server->lobby.autostart_disabled)
 	{
 		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
 		if (server->lobby.countdown_sec == NO_COUNTDOWN)
@@ -835,6 +835,7 @@ bool lobby_init(Server* server)
 	server->lobby.countdown = TICKSPERSEC;
 	server->lobby.countdown_sec = NO_COUNTDOWN;
 	server->lobby.prac_countdown = 0;
+	server->lobby.autostart_disabled = false;
 	memset(&server->lobby.vote, 0, sizeof(Vote));
 
 	Packet pack;
