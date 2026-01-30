@@ -423,7 +423,7 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 
 						break;
 					}
-
+					
 					if (v->vote_cooldown > 0)
 					{
 						char buffer[128];
@@ -431,7 +431,8 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 						server_send_msg(v->server, v->peer, buffer);
 						break;
 					}
-
+					server_send_msg(v->server, v->peer, CLRCODE_RED "Sorry, this command is removed due to abuse. :(");
+					break;
 					if (!vote_init(v->server, &v->server->lobby.vote, VOTE_MAP, 0))
 					{
 						server_send_msg(v->server, v->peer, CLRCODE_RED "not enough participants.");
