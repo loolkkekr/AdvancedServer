@@ -90,14 +90,13 @@ bool lobby_check_countdown(Server* server)
 	else if (server->peers.noitems == 4) target_time = 41;
 	else if (server->peers.noitems == 3) target_time = 61;
 	// else if (server->peers.noitems == 1) target_time = 7;
-	//target_time = 9999;
+	
 	// Если есть хотя бы 2 игрока
 	if (server->peers.noitems >= 2)
 	{
 		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
 		if (server->lobby.countdown_sec == NO_COUNTDOWN)
 		{
-			arget_time = 9999;
 			server->lobby.countdown = TICKSPERSEC;
 			server->lobby.countdown_sec = target_time;
 
@@ -197,7 +196,7 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 			PacketCreate(&pack, SERVER_LOBBY_CORRECT);
 			RAssert(packet_send(v->peer, &pack, true));
 
-            //char msg[100];
+            char msg[100];
             //if(g_config.server_config.networking.server_count >= 2){
 				//server_send_msg(v->server, v->peer, UPPER_BRACKET);
 				//snprintf(msg, 100, "hosted by " CLRCODE_PUR  "%s" CLRCODE_RST, g_config.states.lobby_misc.hosts_name);
@@ -230,7 +229,6 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
                     server_send_msg(v->server, v->peer, CLRCODE_GRN "you've got root perms on this server" CLRCODE_RST);
                     break;
             }
-			break;
 		}
 
 		case CLIENT_CHAT_MESSAGE:
@@ -384,8 +382,6 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 				case CMD_VM:
 				case CMD_VP:
 				{
-					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
-					break;
                     if(g_config.states.lobby_misc.authoritarian_mode || g_config.states.lobby_misc.anonymous_mode)
                         break;
 
@@ -442,9 +438,6 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 						break;
 					}
 
-					
-					server_send_msg(v->server, v->peer, CLRCODE_RED "This command is disabled. Sorry :(");
-					break;
 					//if (hash == CMD_VM) {
 						//int ind;
 						//if (sscanf(msg.value, ":vm %d", &ind) <= 0)
@@ -467,18 +460,19 @@ bool lobby_state_handle(PeerData* v, Packet* packet)
 					//} else if (hash == CMD_VP) {
 						//v->server->lobby.voting_map = 20;
 					//}
-					//char buffer[356];
-					//snprintf(buffer, 356, "%s~ " CLRCODE_YLW "started map vote for %s" CLRCODE_RST ".", v->nickname.value, g_mapList[v->server->lobby.voting_map].name);
 
-					//server_broadcast_msg(v->server, 0, "-----------------------");
-					//server_broadcast_msg(v->server, 0, buffer);
-					//server_broadcast_msg(v->server, 0, "type " CLRCODE_GRN ".yes~ or ignore");
-					//snprintf(buffer, 356, "results will be summarized in " CLRCODE_GRA "%d~ sec", g_config.states.lobby_misc.votekick.cooldown);
-					//server_broadcast_msg(v->server, 0, buffer);
-					//server_broadcast_msg(v->server, 0, "-----------------------");
+					char buffer[356];
+					snprintf(buffer, 356, "%s~ " CLRCODE_YLW "started map vote for %s" CLRCODE_RST ".", v->nickname.value, g_mapList[v->server->lobby.voting_map].name);
 
-					//vote_add(&v->server->lobby.vote, v->id);
-                    //v->vote_cooldown = g_config.states.lobby_misc.votekick.cooldown * TICKSPERSEC;
+					server_broadcast_msg(v->server, 0, "-----------------------");
+					server_broadcast_msg(v->server, 0, buffer);
+					server_broadcast_msg(v->server, 0, "type " CLRCODE_GRN ".yes~ or ignore");
+					snprintf(buffer, 356, "results will be summarized in " CLRCODE_GRA "%d~ sec", g_config.states.lobby_misc.votekick.cooldown);
+					server_broadcast_msg(v->server, 0, buffer);
+					server_broadcast_msg(v->server, 0, "-----------------------");
+
+					vote_add(&v->server->lobby.vote, v->id);
+                    v->vote_cooldown = g_config.states.lobby_misc.votekick.cooldown * TICKSPERSEC;
 					break;
 				}
 
