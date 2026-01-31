@@ -786,12 +786,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					time_start(&data->plr.last_rings);
 					data->plr.rings++;
 					data->plr.stats.rings++;
-					data->plr.rings++;
-					data->plr.stats.rings++;
-					data->plr.rings++;
-					data->plr.stats.rings++;
-					data->plr.rings++;
-					data->plr.stats.rings++;
 				}
 
 				Packet pack;
@@ -800,27 +794,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				PacketWrite(&pack, packet_write16, eid);
 				PacketWrite(&pack, packet_write8, ent->red);
 				PacketWrite(&pack, packet_write8, data->plr.rings > 0);
-				free(ent);
-				RAssert(packet_send(v->peer, &pack, true));
-				PacketCreate(&pack, SERVER_RING_COLLECTED);
-				PacketWrite(&pack, packet_write8, id);
-				PacketWrite(&pack, packet_write16, eid);
-				PacketWrite(&pack, packet_write8, ent->red);
-				PacketWrite(&pack, packet_write8, data->plr.rings > 0);
-				free(ent);
-				RAssert(packet_send(v->peer, &pack, true));
-				PacketCreate(&pack, SERVER_RING_COLLECTED);
-				PacketWrite(&pack, packet_write8, id);
-				PacketWrite(&pack, packet_write16, eid);
-				PacketWrite(&pack, packet_write8, ent->red);
-				PacketWrite(&pack, packet_write8, data->plr.rings > 0);
-				free(ent);
-				RAssert(packet_send(v->peer, &pack, true));
-				PacketCreate(&pack, SERVER_RING_COLLECTED);
-				PacketWrite(&pack, packet_write8, id);
-				PacketWrite(&pack, packet_write16, eid);
-				PacketWrite(&pack, packet_write8, ent->red);
-				PacketWrite(&pack, packet_write8, data->plr.rings > 0);
+
 				free(ent);
 				RAssert(packet_send(v->peer, &pack, true));
 			}
