@@ -164,7 +164,7 @@ void fetch_lobby_status_from_master(void)
 void notify_waiting_players(Server* server)
 {
     // Только для лобби с 1 игроком
-    if (server->peers.noitems != 1)
+    if (server->peers.noitems >= 3)
         return;
 
     // Находим единственного игрока (verified - значит прошел авторизацию)
