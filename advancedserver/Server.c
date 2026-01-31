@@ -15,6 +15,7 @@
 #include <io/Time.h>
 #include <stdio.h>
 #include <time.h>
+#include <process.h>
 #include <string.h>
 #include <cJSON.h>
 
@@ -59,7 +60,7 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(int port, int players, int ingame, bool locked, int time_remaining_sec)
+void report_status_to_master(Server* server) // Изменили сигнатуру, теперь принимаем server
 {
     const char* api_ip = "127.0.0.1";
     int api_port = 5010;
@@ -82,13 +83,44 @@ void report_status_to_master(int port, int players, int ingame, bool locked, int
         return;
     }
 
-    // Отправляем time_remaining в секундах для точности
-    char json_body[256];
-    snprintf(json_body, sizeof(json_body), 
-             "{\"port\": %d, \"players\": %d, \"ingame\": %s, \"locked\": %s, \"time_remaining\": %d}", 
-             port, players, ingame ? "true" : "false", locked ? "true" : "false", time_remaining_sec);
+    // --- СБОР ДАННЫХ ОБ ИГРОКАХ ---
+    cJSON* root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "port", g_config.server_config.networking.port);
+    cJSON_AddNumberToObject(root, "players", server->peers.noitems);
+    cJSON_AddBoolToObject(root, "ingame", server->state == ST_GAME);
+    
+    // Логика блокировки лобби
+    bool is_locked = (server->state != ST_LOBBY) || (server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
+    cJSON_AddBoolToObject(root, "locked", is_locked);
 
-    char request[512];
+    // Время
+    int time_rem = 0;
+    if (server->state == ST_GAME && server->game.started) {
+        time_rem = server->game.time_sec - (int)(server->game.elapsed / 60); // Примерный расчет
+        if (time_rem < 0) time_rem = 0;
+    }
+    cJSON_AddNumberToObject(root, "time_remaining", time_rem);
+
+    // МАССИВ ИГРОКОВ
+    cJSON* players_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < server->peers.capacity; i++)
+    {
+        PeerData* p = (PeerData*)server->peers.ptr[i];
+        if (!p || !p->verified) continue;
+
+        cJSON* pObj = cJSON_CreateObject();
+        cJSON_AddNumberToObject(pObj, "id", p->id);
+        cJSON_AddStringToObject(pObj, "name", p->nickname.value);
+        cJSON_AddStringToObject(pObj, "ip", p->ip.value);
+        cJSON_AddBoolToObject(pObj, "is_op", p->op >= 2);
+        cJSON_AddItemToArray(players_arr, pObj);
+    }
+    cJSON_AddItemToObject(root, "players_data", players_arr);
+
+    char* json_body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    char request[4096]; // Увеличили буфер
     snprintf(request, sizeof(request),
              "POST /update_status HTTP/1.1\r\n"
              "Host: %s:%d\r\n"
@@ -101,6 +133,7 @@ void report_status_to_master(int port, int players, int ingame, bool locked, int
 
     send(sock, request, (int)strlen(request), 0);
     closesocket(sock);
+    free(json_body);
 }
 
 void fetch_lobby_status_from_master(void)
@@ -544,6 +577,67 @@ bool peer_msg(PeerData* v, Packet* packet)
 	return res;
 }
 
+void console_thread(void* arg)
+{
+    Server* server = (Server*)arg;
+    char buffer[256];
+
+    while (server->running)
+    {
+        if (fgets(buffer, sizeof(buffer), stdin))
+        {
+            // Удаляем \n
+            buffer[strcspn(buffer, "\n")] = 0;
+            if (strlen(buffer) == 0) continue;
+
+            Info("Console Command: %s", buffer);
+
+            // Обработка команд напрямую
+            char cmd[32];
+            int id = -1;
+            char arg_str[128] = {0};
+
+            sscanf(buffer, "%s %d %127s", cmd, &id, arg_str);
+
+            MutexLock(server->state_lock);
+            
+            if (strcmp(cmd, "kick") == 0 && id != -1)
+            {
+                server_disconnect_id(server, (uint16_t)id, DR_KICKEDBYHOST, "Kicked by Admin Console");
+            }
+            else if (strcmp(cmd, "ban") == 0 && id != -1)
+            {
+                // Находим IP игрока перед киком
+                PeerData* p = server_find_peer(server, (uint16_t)id);
+                if (p) {
+                    ban_add(p->nickname.value, p->udid.value, p->ip.value);
+                    server_disconnect(server, p->peer, DR_BANNEDBYHOST, "Banned by Admin Console");
+                }
+            }
+            else if (strcmp(cmd, "op") == 0 && id != -1)
+            {
+                PeerData* p = server_find_peer(server, (uint16_t)id);
+                if (p) {
+                    p->op = 3; 
+                    op_add(p->nickname.value, p->ip.value);
+                    server_send_msg(server, p->peer, CLRCODE_GRN "You are now an Operator (Console)");
+                }
+            }
+            else if (strcmp(cmd, "stop") == 0)
+            {
+                if(server->state == ST_GAME)
+                    game_end(server, ED_TIMEOVER, false);
+                else
+                    lobby_init(server);
+                
+                server_broadcast_msg(server, 0, CLRCODE_RED "Lobby reset by Admin Console");
+            }
+
+            MutexUnlock(server->state_lock);
+        }
+    }
+}
+
 bool server_worker(Server* server)
 {
 	srand((unsigned int)time(NULL));
@@ -581,6 +675,12 @@ bool server_worker(Server* server)
 
 	Packet pack;
 	PacketCreate(&pack, SERVER_HEARTBEAT);
+	#ifdef _WIN32
+		_beginthread(console_thread, 0, (void*)server);
+	#else
+		pthread_t th;
+		pthread_create(&th, NULL, (void*)console_thread, (void*)server); // Требует адаптации под void* сигнатуру
+	#endif
 
 	while(server->running)
 	{
@@ -727,13 +827,7 @@ bool server_worker(Server* server)
 							if (time_remaining_sec < 0) time_remaining_sec = 0;
 						}
 					}
-					report_status_to_master(
-						g_config.server_config.networking.port, 
-						server->peers.noitems, 
-						is_ingame,
-						is_locked,
-						time_remaining_sec  // ДОБАВИТЬ ЭТОТ ПАРАМЕТР
-					);
+					report_status_to_master(server);
 					api_report_timer = 0;
 				}
 				double current_interval = first_notification_done ? 30000.0 : 2000.0;
