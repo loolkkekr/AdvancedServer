@@ -231,7 +231,7 @@ void notify_waiting_players(Server* server)
     char msg[256];
     
     snprintf(msg, sizeof(msg), 
-        CLRCODE_YLW "we found %d players currently in game." CLRCODE_RST, 
+        CLRCODE_YLW "we found %d players that currently in game." CLRCODE_RST, 
         total_players_ingame);
     server_send_msg(server, waiting_player->peer, msg);
 
