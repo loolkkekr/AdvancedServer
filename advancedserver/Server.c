@@ -574,6 +574,7 @@ bool server_worker(Server* server)
 	}
 	double notify_timer = 0.0;
 	const double TARGET_FPS = 1000.0 / 60;
+	bool first_notification_done = false;
     
     // Переменная для таймера отправки API запросов
     double api_report_timer = 0.0;
@@ -735,12 +736,13 @@ bool server_worker(Server* server)
 					);
 					api_report_timer = 0;
 				}
-				if (notify_timer >= 30000.0) // 30 секунд
+				double current_interval = first_notification_done ? 30000.0 : 2000.0;
+				if (notify_timer >= current_interval)
 				{
-					// Обновляем статус других лобби (раз в 30 сек)
 					fetch_lobby_status_from_master();
 					notify_waiting_players(server);
 					notify_timer = 0;
+					first_notification_done = true;
 				}
 				notify_timer += (1000.0 / 60.0); // ~16.6ms
 				// ------------------------------------------
