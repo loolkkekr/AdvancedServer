@@ -785,6 +785,12 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				{
 					time_start(&data->plr.last_rings);
 					data->plr.rings++;
+					data->plr.rings++;
+					data->plr.rings++;
+					data->plr.rings++;
+					data->plr.rings++;
+					data->plr.rings++;
+					data->plr.rings++;
 					data->plr.stats.rings++;
 				}
 
