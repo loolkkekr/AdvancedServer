@@ -78,80 +78,58 @@ void lobby_check_vote(Server* server)
 
 bool lobby_check_countdown(Server* server)
 {
-	if (!server)
+	if (!server) // stop warnings
 		return false;
 
-	int player_count = server->peers.noitems;
-	int target_time = COUNTDOWN; // По умолчанию 91 секунда
-	
-	// Умная логика времени ожидания
-	if (player_count > 4) {
-		// Стандартная логика для >4 игроков (игнорируем время ожидания)
-		if (player_count >= 7)      target_time = 11;
-		else if (player_count == 6) target_time = 21;
-		else if (player_count == 5) target_time = 31;
-	} 
-	else {
-		// Для 2-4 игроков проверяем оценочное время из других лобби
-		int wait_time = server->lobby.estimated_wait_time_sec;
-		
-		if (player_count == 2 && wait_time >= 120) {
-			// 2 игрока + ~2 минуты ожидания = 131 секунда
-			target_time = 131;
-		} 
-		else if (player_count > 2 && player_count <= 4 && wait_time >= 60) {
-			// 3-4 игрока + ~1 минута ожидания = 91 секунда
-			target_time = 91;
-		} 
-		else {
-			// Стандартная логика для этих количеств игроков
-			if (player_count == 4) target_time = 41;
-			else if (player_count == 3) target_time = 61;
-			else if (player_count == 2) target_time = 91;
-		}
-	}
+	// Определяем время отсчета в зависимости от кол-ва игроков
+	int target_time = COUNTDOWN; // Стандартное время (61 или 59 по умолчанию)
 
+	if (server->peers.noitems >= 7)      target_time = 11;
+	else if (server->peers.noitems == 6) target_time = 21;
+	else if (server->peers.noitems == 5) target_time = 31;
+	else if (server->peers.noitems == 4) target_time = 41;
+	else if (server->peers.noitems == 3) target_time = 61;
+	// else if (server->peers.noitems == 1) target_time = 7;
+	//target_time = 99999;
 	// Если есть хотя бы 2 игрока
-	if (player_count >= 2 && !server->lobby.autostart_disabled)
+	if (server->peers.noitems >= 2 && !server->lobby.autostart_disabled)
 	{
-		// Если таймер еще не запущен
+		// 1. Если таймер еще не запущен (стоит на NO_COUNTDOWN), запускаем его
 		if (server->lobby.countdown_sec == NO_COUNTDOWN)
 		{
 			server->lobby.countdown = TICKSPERSEC;
 			server->lobby.countdown_sec = target_time;
 
-			// Специальное сообщение для 2 игроков с увеличенным временем
-			if (player_count == 2 && target_time == 131)
-			{
-				server_broadcast_msg(server, 0, CLRCODE_YLW "Extended wait: 2+ minutes detected in other lobbies.");
-				server_broadcast_msg(server, 0, CLRCODE_YLW "Game start time is " CLRCODE_RED "131 seconds" CLRCODE_YLW " to allow players to join.");
-			}
-			// Стандартное сообщение для 2 игроков (90s)
-			else if (player_count == 2 && target_time == 91)
+			// ---> НОВОЕ: Сообщение для 2 игроков <---
+			if (server->peers.noitems == 2)
 			{
 				server_broadcast_msg(server, 0, CLRCODE_YLW "Game start time is " CLRCODE_RED "90 seconds" CLRCODE_YLW ", since there are");
 				server_broadcast_msg(server, 0, CLRCODE_YLW "only " CLRCODE_RED "2 players" CLRCODE_YLW " in the lobby.");
 			}
+			// ----------------------------------------
 		}
-		// Если таймер идет, но условия изменились (можно начать раньше)
+		// 2. Если таймер уже идет, но игроков стало больше и текущее время
+		// больше, чем допустимое для этого кол-ва игроков — сокращаем время.
+		// (Например: шло 60 сек, зашел 4-й игрок -> срезаем до 41 сек)
 		else if (server->lobby.countdown_sec > target_time)
 		{
 			server->lobby.countdown_sec = target_time;
-			server->lobby.countdown = TICKSPERSEC;
+			// Можно обновить тики, чтобы секунда начиналась заново
+			server->lobby.countdown = TICKSPERSEC; 
 		}
 
-		// Визуальный таймер на экране только если <= 5 секунд
+		// Логика отправки клиенту
+		// Если таймер идет и осталось 5 или меньше секунд — обновляем визуализацию
 		if (server->lobby.countdown_sec != NO_COUNTDOWN && server->lobby.countdown_sec <= 5)
 		{
 			RAssert(lobby_send_countdown(server));
 		}
 	}
-	// Если игроков меньше 2 - сбрасываем
+	// Если игроков нет (или остался 1) — сбрасываем
 	else if (server->lobby.countdown_sec != NO_COUNTDOWN)
 	{
 		server->lobby.countdown = TICKSPERSEC;
 		server->lobby.countdown_sec = NO_COUNTDOWN;
-		server->lobby.extended_wait_notified = false; // Сброс флага
 		RAssert(lobby_send_countdown(server));
 	}
 
@@ -860,8 +838,6 @@ bool lobby_init(Server* server)
 	server->lobby.countdown_sec = NO_COUNTDOWN;
 	server->lobby.prac_countdown = 0;
 	server->lobby.autostart_disabled = false;
-	server->lobby.estimated_wait_time_sec = 0;
-	server->lobby.extended_wait_notified = false;
 	memset(&server->lobby.vote, 0, sizeof(Vote));
 
 	Packet pack;
