@@ -231,12 +231,12 @@ void notify_waiting_players(Server* server)
     char msg[256];
     
     snprintf(msg, sizeof(msg), 
-        CLRCODE_YLW "Found %d players currently in game!" CLRCODE_RST, 
+        CLRCODE_YLW "we found %d players currently in game." CLRCODE_RST, 
         total_players_ingame);
     server_send_msg(server, waiting_player->peer, msg);
 
     server_send_msg(server, waiting_player->peer, 
-        CLRCODE_YLW "They will automatically join this lobby after their game ends." CLRCODE_RST);
+        CLRCODE_YLW "they will automatically join this lobby after their game ends." CLRCODE_RST);
 
     // Переводим секунды в минуты (округляем вверх)
     int min_minutes = (min_time_sec + 59) / 60;
@@ -244,13 +244,13 @@ void notify_waiting_players(Server* server)
     if (min_minutes > 0)
     {
         snprintf(msg, sizeof(msg), 
-            CLRCODE_GRN "Estimated wait time: approximately %d min" CLRCODE_RST, 
+            CLRCODE_GRN "estimated wait time: approximately %d min" CLRCODE_RST, 
             min_minutes);
     }
     else
     {
         snprintf(msg, sizeof(msg), 
-            CLRCODE_GRN "Estimated wait time: less than 1 min" CLRCODE_RST);
+            CLRCODE_GRN "estimated wait time: less than 1 min" CLRCODE_RST);
     }
     server_send_msg(server, waiting_player->peer, msg);
 }
