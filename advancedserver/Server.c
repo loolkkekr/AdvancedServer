@@ -15,9 +15,14 @@
 #include <io/Time.h>
 #include <stdio.h>
 #include <time.h>
-#include <process.h>
 #include <string.h>
 #include <cJSON.h>
+
+#ifdef _WIN32
+    #include <process.h>
+#else
+    #include <pthread.h>
+#endif
 
 #ifdef SYS_USE_SDL2
 #include <ui/Main.h>
