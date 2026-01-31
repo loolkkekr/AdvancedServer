@@ -52,6 +52,9 @@ Mutex lobby_status_mut;
 #define LOBBY_INFO_TIMEOUT_SEC 40
 
 #define NO_COUNTDOWN 92
+
+int estimated_wait_time_sec;    // Хранит время ожидания из других лобби
+bool extended_wait_notified;
 extern bool lobby_send_countdown(Server* server);
 extern bool lobby_check_countdown(Server* server);
 cJSON* ip_addr_list = NULL;
@@ -163,11 +166,19 @@ void fetch_lobby_status_from_master(void)
 
 void notify_waiting_players(Server* server)
 {
-    // Только для лобби с 1 игроком
-    if (server->peers.noitems >= 3)
+    // Только для лобби с 1 или 2 игроками
+    if (server->peers.noitems != 1 && server->peers.noitems != 2)
+    {
+        // Сбрасываем флаг, если игроков стало больше 2
+        server->lobby.extended_wait_notified = false;
+        return;
+    }
+
+    // Для 2 игроков: проверяем только если еще не отправляли сообщение
+    if (server->peers.noitems == 2 && server->lobby.extended_wait_notified)
         return;
 
-    // Находим единственного игрока (verified - значит прошел авторизацию)
+    // Находим игрока для одиночного сообщения (для 1 игрока)
     PeerData* waiting_player = NULL;
     for (size_t i = 0; i < server->peers.capacity; i++)
     {
@@ -175,11 +186,12 @@ void notify_waiting_players(Server* server)
         if (peer && peer->verified)
         {
             waiting_player = peer;
-            break;
+            if (server->peers.noitems == 1)
+                break;
         }
     }
 
-    if (!waiting_player)
+    if (!waiting_player && server->peers.noitems == 1)
         return;
 
     // Собираем статистику по другим лобби
@@ -207,7 +219,6 @@ void notify_waiting_players(Server* server)
             int players = j_players->valueint;
             bool ingame = cJSON_IsTrue(j_ingame);
 
-            // Пропускаем текущее лобби
             if (port == g_config.server_config.networking.port)
                 continue;
 
@@ -216,7 +227,7 @@ void notify_waiting_players(Server* server)
                 total_players_ingame += players;
                 found_ingame = true;
 
-                int time_sec = j_time ? j_time->valueint : 300; // По умолчанию 5 минут
+                int time_sec = j_time ? j_time->valueint : 300;
                 if (time_sec < min_time_sec)
                     min_time_sec = time_sec;
             }
@@ -227,32 +238,58 @@ void notify_waiting_players(Server* server)
     if (!found_ingame || total_players_ingame == 0)
         return;
 
-    // Отправляем сообщения на английском
+    // Сохраняем время для использования в countdown логике (всегда)
+    server->lobby.estimated_wait_time_sec = min_time_sec;
+
+    // Проверяем условия для отправки сообщения
+    bool should_notify = false;
+    
+    if (server->peers.noitems == 1) {
+        should_notify = true;
+    } 
+    else if (server->peers.noitems == 2) {
+        // Только если время ожидания >= 2 минут (120 сек) и еще не уведомляли
+        if (min_time_sec >= 120 && !server->lobby.extended_wait_notified) {
+            should_notify = true;
+            server->lobby.extended_wait_notified = true;
+        }
+    }
+
+    if (!should_notify)
+        return;
+
+    // Отправляем сообщения
     char msg[256];
     
     snprintf(msg, sizeof(msg), 
         CLRCODE_YLW "we found %d players that currently in game." CLRCODE_RST, 
         total_players_ingame);
-    server_send_msg(server, waiting_player->peer, msg);
+    
+    if (server->peers.noitems == 1) {
+        server_send_msg(server, waiting_player->peer, msg);
+        server_send_msg(server, waiting_player->peer, 
+            CLRCODE_YLW "they will automatically join this lobby after their game ends." CLRCODE_RST);
+    } else {
+        // Для 2 игроков - широковещательно
+        server_broadcast_msg(server, 0, msg);
+        server_broadcast_msg(server, 0, 
+            CLRCODE_YLW "they will automatically join this lobby after their game ends." CLRCODE_RST);
+    }
 
-    server_send_msg(server, waiting_player->peer, 
-        CLRCODE_YLW "they will automatically join this lobby after their game ends." CLRCODE_RST);
-
-    // Переводим секунды в минуты (округляем вверх)
     int min_minutes = (min_time_sec + 59) / 60;
     
     if (min_minutes > 0)
-    {
         snprintf(msg, sizeof(msg), 
             CLRCODE_GRN "estimated wait time: approximately %d min" CLRCODE_RST, 
             min_minutes);
-    }
     else
-    {
         snprintf(msg, sizeof(msg), 
             CLRCODE_GRN "estimated wait time: less than 1 min" CLRCODE_RST);
-    }
-    server_send_msg(server, waiting_player->peer, msg);
+    
+    if (server->peers.noitems == 1)
+        server_send_msg(server, waiting_player->peer, msg);
+    else
+        server_broadcast_msg(server, 0, msg);
 }
 
 // -----------------------------

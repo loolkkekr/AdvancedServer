@@ -83,6 +83,8 @@ typedef struct
 	double		countdown;
 	double		prac_countdown;
 	uint8_t		countdown_sec;
+	int estimated_wait_time_sec;
+	bool extended_wait_notified;
 	bool autostart_disabled;
 	Vote		vote;
 	PeerData	kick_target;
