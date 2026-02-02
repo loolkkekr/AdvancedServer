@@ -66,72 +66,80 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(Server* server, int time_remaining_sec)
+void report_status_to_master(Server* server) // Изменили сигнатуру, теперь принимаем server
 {
-	const char* api_ip = "127.0.0.1";
-	int api_port = 5010;
+    const char* api_ip = "127.0.0.1";
+    int api_port = 5010;
 
-	SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (sock == INVALID_SOCKET) return;
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (sock == INVALID_SOCKET) return;
 
-	struct sockaddr_in server_addr;
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(api_port);
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(api_port);
 #ifdef _WIN32
-	server_addr.sin_addr.s_addr = inet_addr(api_ip);
+    server_addr.sin_addr.s_addr = inet_addr(api_ip);
 #else
-	inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
+    inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
 #endif
 
-	if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
-	{
-		closesocket(sock);
-		return;
-	}
+    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
+    {
+        closesocket(sock);
+        return;
+    }
 
-	cJSON* root = cJSON_CreateObject();
-	cJSON_AddNumberToObject(root, "port", g_config.server_config.networking.port);
-	cJSON_AddNumberToObject(root, "players", server->peers.noitems);
-	cJSON_AddBoolToObject(root, "ingame", server->state == ST_GAME);
-	
-	bool is_locked = (server->state != ST_LOBBY) || 
-		(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != NO_COUNTDOWN);
-	cJSON_AddBoolToObject(root, "locked", is_locked);
+    // --- СБОР ДАННЫХ ОБ ИГРОКАХ ---
+    cJSON* root = cJSON_CreateObject();
+    cJSON_AddNumberToObject(root, "port", g_config.server_config.networking.port);
+    cJSON_AddNumberToObject(root, "players", server->peers.noitems);
+    cJSON_AddBoolToObject(root, "ingame", server->state == ST_GAME);
+    
+    // Логика блокировки лобби
+    bool is_locked = (server->state != ST_LOBBY) || (server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
+    cJSON_AddBoolToObject(root, "locked", is_locked);
 
-	cJSON_AddNumberToObject(root, "time_remaining", time_remaining_sec);
+    // Время
+    int time_rem = 0;
+    if (server->state == ST_GAME && server->game.started) {
+        time_rem = server->game.time_sec - (int)(server->game.elapsed / TICKSPERSEC); // Примерный расчет
+        if (time_rem < 0) time_rem = 0;
+    }
+    cJSON_AddNumberToObject(root, "time_remaining", time_rem);
 
-	cJSON* players_arr = cJSON_CreateArray();
-	for (size_t i = 0; i < server->peers.capacity; i++)
-	{
-		PeerData* p = (PeerData*)server->peers.ptr[i];
-		if (!p || !p->verified) continue;
+    // МАССИВ ИГРОКОВ
+    cJSON* players_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < server->peers.capacity; i++)
+    {
+        PeerData* p = (PeerData*)server->peers.ptr[i];
+        if (!p || !p->verified) continue;
 
-		cJSON* pObj = cJSON_CreateObject();
-		cJSON_AddNumberToObject(pObj, "id", p->id);
-		cJSON_AddStringToObject(pObj, "name", p->nickname.value);
-		cJSON_AddStringToObject(pObj, "ip", p->ip.value);
-		cJSON_AddBoolToObject(pObj, "is_op", p->op >= 2);
-		cJSON_AddItemToArray(players_arr, pObj);
-	}
-	cJSON_AddItemToObject(root, "players_data", players_arr);
+        cJSON* pObj = cJSON_CreateObject();
+        cJSON_AddNumberToObject(pObj, "id", p->id);
+        cJSON_AddStringToObject(pObj, "name", p->nickname.value);
+        cJSON_AddStringToObject(pObj, "ip", p->ip.value);
+        cJSON_AddBoolToObject(pObj, "is_op", p->op >= 2);
+        cJSON_AddItemToArray(players_arr, pObj);
+    }
+    cJSON_AddItemToObject(root, "players_data", players_arr);
 
-	char* json_body = cJSON_PrintUnformatted(root);
-	cJSON_Delete(root);
+    char* json_body = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
 
-	char request[4096];
-	snprintf(request, sizeof(request),
-		"POST /update_status HTTP/1.1\r\n"
-		"Host: %s:%d\r\n"
-		"Content-Type: application/json\r\n"
-		"Content-Length: %zu\r\n"
-		"Connection: close\r\n"
-		"\r\n"
-		"%s",
-		api_ip, api_port, strlen(json_body), json_body);
+    char request[4096]; // Увеличили буфер
+    snprintf(request, sizeof(request),
+             "POST /update_status HTTP/1.1\r\n"
+             "Host: %s:%d\r\n"
+             "Content-Type: application/json\r\n"
+             "Content-Length: %zu\r\n"
+             "Connection: close\r\n"
+             "\r\n"
+             "%s",
+             api_ip, api_port, strlen(json_body), json_body);
 
-	send(sock, request, (int)strlen(request), 0);
-	closesocket(sock);
-	free(json_body);
+    send(sock, request, (int)strlen(request), 0);
+    closesocket(sock);
+    free(json_body);
 }
 
 void fetch_lobby_status_from_master(void)
