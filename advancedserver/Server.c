@@ -101,7 +101,7 @@ void report_status_to_master(Server* server) // Изменили сигнату�
     // Время
     int time_rem = 0;
     if (server->state == ST_GAME && server->game.started) {
-        time_rem = server->game.time_sec - (int)(server->game.elapsed / 60); // Примерный расчет
+        time_rem = server->game.time_sec - (int)(server->game.elapsed / TICKSPERSEC); // Примерный расчет
         if (time_rem < 0) time_rem = 0;
     }
     cJSON_AddNumberToObject(root, "time_remaining", time_rem);
@@ -848,7 +848,7 @@ bool server_worker(Server* server)
                 // server->delta обычно 1, если мы в цикле fixed update.
                 // TICKSPERSEC = 60. 2000ms = 2 сек. 
                 // Здесь time_end возвращает миллисекунды (обычно), так что:
-                api_report_timer += (1000.0 / 60.0); // Прибавляем время кадра ~16.6ms
+                api_report_timer += (1000.0 / (double)TICKSPERSEC); // Прибавляем время кадра ~16.6ms
 			}
 			MutexUnlock(server->state_lock);
 			server->delta = 1;
