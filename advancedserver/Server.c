@@ -45,7 +45,6 @@
 
 // -----------------------------
 
-#define SERVER_TPS 100
 
 typedef struct {
     int port;
@@ -103,7 +102,7 @@ void report_status_to_master(Server* server) // Изменили сигнату�
     // Время
     int time_rem = 0;
     if (server->state == ST_GAME && server->game.started) {
-        time_rem = server->game.time_sec - (int)(server->game.elapsed / SERVER_TPS); // Примерный расчет
+        time_rem = server->game.time_sec - (int)(server->game.elapsed / TICKSPERSEC); // Примерный расчет
         if (time_rem < 0) time_rem = 0;
     }
     cJSON_AddNumberToObject(root, "time_remaining", time_rem);
@@ -674,7 +673,7 @@ bool server_worker(Server* server)
 		time_remaining = (total_game_time - elapsed) / 60 + 1;
 	}
 	double notify_timer = 0.0;
-	const double TARGET_FPS = 1000.0 / (double)SERVER_TPS;	
+	const double TARGET_FPS = 1000.0 / 60;
 	bool first_notification_done = false;
     
     // Переменная для таймера отправки API запросов
