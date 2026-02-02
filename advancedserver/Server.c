@@ -66,80 +66,72 @@ Mutex ip_addr_mut;
 
 // --- API REPORT FUNCTION ---
 // Отправляет статус серверу менеджеру (Python)
-void report_status_to_master(Server* server) // Изменили сигнатуру, теперь принимаем server
+void report_status_to_master(Server* server, int time_remaining_sec)
 {
-    const char* api_ip = "127.0.0.1";
-    int api_port = 5010;
+	const char* api_ip = "127.0.0.1";
+	int api_port = 5010;
 
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (sock == INVALID_SOCKET) return;
+	SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (sock == INVALID_SOCKET) return;
 
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(api_port);
+	struct sockaddr_in server_addr;
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(api_port);
 #ifdef _WIN32
-    server_addr.sin_addr.s_addr = inet_addr(api_ip);
+	server_addr.sin_addr.s_addr = inet_addr(api_ip);
 #else
-    inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
+	inet_pton(AF_INET, api_ip, &server_addr.sin_addr);
 #endif
 
-    if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
-    {
-        closesocket(sock);
-        return;
-    }
+	if (connect(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR)
+	{
+		closesocket(sock);
+		return;
+	}
 
-    // --- СБОР ДАННЫХ ОБ ИГРОКАХ ---
-    cJSON* root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "port", g_config.server_config.networking.port);
-    cJSON_AddNumberToObject(root, "players", server->peers.noitems);
-    cJSON_AddBoolToObject(root, "ingame", server->state == ST_GAME);
-    
-    // Логика блокировки лобби
-    bool is_locked = (server->state != ST_LOBBY) || (server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
-    cJSON_AddBoolToObject(root, "locked", is_locked);
+	cJSON* root = cJSON_CreateObject();
+	cJSON_AddNumberToObject(root, "port", g_config.server_config.networking.port);
+	cJSON_AddNumberToObject(root, "players", server->peers.noitems);
+	cJSON_AddBoolToObject(root, "ingame", server->state == ST_GAME);
+	
+	bool is_locked = (server->state != ST_LOBBY) || 
+		(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != NO_COUNTDOWN);
+	cJSON_AddBoolToObject(root, "locked", is_locked);
 
-    // Время
-    int time_rem = 0;
-    if (server->state == ST_GAME && server->game.started) {
-        time_rem = server->game.time_sec - (int)(server->game.elapsed / TICKSPERSEC); // Примерный расчет
-        if (time_rem < 0) time_rem = 0;
-    }
-    cJSON_AddNumberToObject(root, "time_remaining", time_rem);
+	cJSON_AddNumberToObject(root, "time_remaining", time_remaining_sec);
 
-    // МАССИВ ИГРОКОВ
-    cJSON* players_arr = cJSON_CreateArray();
-    for (size_t i = 0; i < server->peers.capacity; i++)
-    {
-        PeerData* p = (PeerData*)server->peers.ptr[i];
-        if (!p || !p->verified) continue;
+	cJSON* players_arr = cJSON_CreateArray();
+	for (size_t i = 0; i < server->peers.capacity; i++)
+	{
+		PeerData* p = (PeerData*)server->peers.ptr[i];
+		if (!p || !p->verified) continue;
 
-        cJSON* pObj = cJSON_CreateObject();
-        cJSON_AddNumberToObject(pObj, "id", p->id);
-        cJSON_AddStringToObject(pObj, "name", p->nickname.value);
-        cJSON_AddStringToObject(pObj, "ip", p->ip.value);
-        cJSON_AddBoolToObject(pObj, "is_op", p->op >= 2);
-        cJSON_AddItemToArray(players_arr, pObj);
-    }
-    cJSON_AddItemToObject(root, "players_data", players_arr);
+		cJSON* pObj = cJSON_CreateObject();
+		cJSON_AddNumberToObject(pObj, "id", p->id);
+		cJSON_AddStringToObject(pObj, "name", p->nickname.value);
+		cJSON_AddStringToObject(pObj, "ip", p->ip.value);
+		cJSON_AddBoolToObject(pObj, "is_op", p->op >= 2);
+		cJSON_AddItemToArray(players_arr, pObj);
+	}
+	cJSON_AddItemToObject(root, "players_data", players_arr);
 
-    char* json_body = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
+	char* json_body = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
 
-    char request[4096]; // Увеличили буфер
-    snprintf(request, sizeof(request),
-             "POST /update_status HTTP/1.1\r\n"
-             "Host: %s:%d\r\n"
-             "Content-Type: application/json\r\n"
-             "Content-Length: %zu\r\n"
-             "Connection: close\r\n"
-             "\r\n"
-             "%s",
-             api_ip, api_port, strlen(json_body), json_body);
+	char request[4096];
+	snprintf(request, sizeof(request),
+		"POST /update_status HTTP/1.1\r\n"
+		"Host: %s:%d\r\n"
+		"Content-Type: application/json\r\n"
+		"Content-Length: %zu\r\n"
+		"Connection: close\r\n"
+		"\r\n"
+		"%s",
+		api_ip, api_port, strlen(json_body), json_body);
 
-    send(sock, request, (int)strlen(request), 0);
-    closesocket(sock);
-    free(json_body);
+	send(sock, request, (int)strlen(request), 0);
+	closesocket(sock);
+	free(json_body);
 }
 
 void fetch_lobby_status_from_master(void)
@@ -657,35 +649,28 @@ bool server_worker(Server* server)
 		ip_addr_list = cJSON_CreateObject();
 		RAssert(ip_addr_list);
 		MutexCreate(ip_addr_mut);
-		MutexCreate(lobby_status_mut); // ДОБАВИТЬ
+		MutexCreate(lobby_status_mut);
 	}
+	
 	TimeStamp ticker;
 	time_start(&ticker);
 
 	double next_tick = time_end(&ticker);
 	double heartbeat = 0.0;
-	int time_remaining = 0;
-	if (server->state == ST_GAME && server->game.started)
-	{
-		// Рассчитываем оставшееся время
-		int total_game_time = server->game.time_sec; // или g_config...
-		int elapsed = (int)(server->game.elapsed / TICKSPERSEC);
-		time_remaining = (total_game_time - elapsed) / 60 + 1;
-	}
 	double notify_timer = 0.0;
 	const double TARGET_FPS = 1000.0 / 60;
 	bool first_notification_done = false;
     
-    // Переменная для таймера отправки API запросов
-    double api_report_timer = 0.0;
+	double api_report_timer = 0.0;
 
 	Packet pack;
 	PacketCreate(&pack, SERVER_HEARTBEAT);
+	
 	#ifdef _WIN32
 		_beginthread(console_thread, 0, (void*)server);
 	#else
 		pthread_t th;
-		pthread_create(&th, NULL, (void*)console_thread, (void*)server); // Требует адаптации под void* сигнатуру
+		pthread_create(&th, NULL, (void*)console_thread, (void*)server);
 	#endif
 
 	while(server->running)
@@ -723,7 +708,7 @@ bool server_worker(Server* server)
 					if(!v)
 						break;
 					
-                    if (v->op < 2 && v->should_timeout)
+					if (v->op < 2 && v->should_timeout)
 					{
 						uint64_t result;
 						if (timeout_check(v->udid.value, v->ip.value, &result) && result == 0)
@@ -741,7 +726,6 @@ bool server_worker(Server* server)
 						
 						MutexLock(v->server->state_lock);
 						{
-							// Step 3: Cleanup (Only if joined before)
 							if (dylist_remove(&v->server->peers, v))
 								server_state_left(v);
 						}
@@ -815,27 +799,37 @@ bool server_worker(Server* server)
 					heartbeat += server->delta;
 				}
                 
-                // --- API REPORT LOGIC ---
-                // Отправляем статус каждые 2000 мс (2 секунды)
-				if (api_report_timer >= 2000.0) 
+				// --- API REPORT LOGIC ---
+				api_report_timer += server->delta * (1000.0 / TICKSPERSEC); // Конвертируем в мс
+				
+				if (api_report_timer >= 2000.0) // Каждые 2 секунды
 				{
-					bool is_ingame = (server->state == ST_GAME);
-					bool is_locked = (server->state != ST_LOBBY) || 
-									(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
+					// Расчёт оставшегося времени — всегда актуальный
 					int time_remaining_sec = 0;
 					if (server->state == ST_GAME && server->game.started)
 					{
-						time_remaining_sec = server->game.time_sec;
-						// Если таймер отключен (banana), берем sudden_death_timer как приблизительное время
 						if (g_config.states.gameplay.banana.disable_timer)
 						{
-							time_remaining_sec = g_config.states.gameplay.sudden_death_timer - (int)(server->game.elapsed / TICKSPERSEC);
-							if (time_remaining_sec < 0) time_remaining_sec = 0;
+							// Обратный отсчёт до sudden death
+							int elapsed_sec = (int)(server->game.elapsed / TICKSPERSEC);
+							time_remaining_sec = g_config.states.gameplay.sudden_death_timer - elapsed_sec;
 						}
+						else
+						{
+							// Обычный таймер — берём текущее значение напрямую
+							time_remaining_sec = server->game.time_sec;
+						}
+						
+						if (time_remaining_sec < 0) 
+							time_remaining_sec = 0;
 					}
-					report_status_to_master(server);
-					api_report_timer = 0;
+
+					report_status_to_master(server, time_remaining_sec);
+					api_report_timer = 0.0;
 				}
+
+				// Notify waiting players
+				notify_timer += server->delta * (1000.0 / TICKSPERSEC);
 				double current_interval = first_notification_done ? 30000.0 : 2000.0;
 				if (notify_timer >= current_interval)
 				{
@@ -844,12 +838,6 @@ bool server_worker(Server* server)
 					notify_timer = 0;
 					first_notification_done = true;
 				}
-				notify_timer += (1000.0 / 60.0); // ~16.6ms
-				// ------------------------------------------
-                // server->delta обычно 1, если мы в цикле fixed update.
-                // TICKSPERSEC = 60. 2000ms = 2 сек. 
-                // Здесь time_end возвращает миллисекунды (обычно), так что:
-                api_report_timer += (1000.0 / (double)TICKSPERSEC); // Прибавляем время кадра ~16.6ms
 			}
 			MutexUnlock(server->state_lock);
 			server->delta = 1;
