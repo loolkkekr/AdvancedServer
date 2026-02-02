@@ -657,28 +657,35 @@ bool server_worker(Server* server)
 		ip_addr_list = cJSON_CreateObject();
 		RAssert(ip_addr_list);
 		MutexCreate(ip_addr_mut);
-		MutexCreate(lobby_status_mut);
+		MutexCreate(lobby_status_mut); // ДОБАВИТЬ
 	}
-	
 	TimeStamp ticker;
 	time_start(&ticker);
 
 	double next_tick = time_end(&ticker);
 	double heartbeat = 0.0;
+	int time_remaining = 0;
+	if (server->state == ST_GAME && server->game.started)
+	{
+		// Рассчитываем оставшееся время
+		int total_game_time = server->game.time_sec; // или g_config...
+		int elapsed = (int)(server->game.elapsed / TICKSPERSEC);
+		time_remaining = (total_game_time - elapsed) / 60 + 1;
+	}
 	double notify_timer = 0.0;
 	const double TARGET_FPS = 1000.0 / 60;
 	bool first_notification_done = false;
     
-	double api_report_timer = 0.0;
+    // Переменная для таймера отправки API запросов
+    double api_report_timer = 0.0;
 
 	Packet pack;
 	PacketCreate(&pack, SERVER_HEARTBEAT);
-	
 	#ifdef _WIN32
 		_beginthread(console_thread, 0, (void*)server);
 	#else
 		pthread_t th;
-		pthread_create(&th, NULL, (void*)console_thread, (void*)server);
+		pthread_create(&th, NULL, (void*)console_thread, (void*)server); // Требует адаптации под void* сигнатуру
 	#endif
 
 	while(server->running)
@@ -716,7 +723,7 @@ bool server_worker(Server* server)
 					if(!v)
 						break;
 					
-					if (v->op < 2 && v->should_timeout)
+                    if (v->op < 2 && v->should_timeout)
 					{
 						uint64_t result;
 						if (timeout_check(v->udid.value, v->ip.value, &result) && result == 0)
@@ -734,6 +741,7 @@ bool server_worker(Server* server)
 						
 						MutexLock(v->server->state_lock);
 						{
+							// Step 3: Cleanup (Only if joined before)
 							if (dylist_remove(&v->server->peers, v))
 								server_state_left(v);
 						}
@@ -807,37 +815,27 @@ bool server_worker(Server* server)
 					heartbeat += server->delta;
 				}
                 
-				// --- API REPORT LOGIC ---
-				api_report_timer += server->delta * (1000.0 / TICKSPERSEC); // Конвертируем в мс
-				
-				if (api_report_timer >= 2000.0) // Каждые 2 секунды
+                // --- API REPORT LOGIC ---
+                // Отправляем статус каждые 2000 мс (2 секунды)
+				if (api_report_timer >= 2000.0) 
 				{
-					// Расчёт оставшегося времени — всегда актуальный
+					bool is_ingame = (server->state == ST_GAME);
+					bool is_locked = (server->state != ST_LOBBY) || 
+									(server->lobby.countdown_sec <= 2 && server->lobby.countdown_sec != 92);
 					int time_remaining_sec = 0;
 					if (server->state == ST_GAME && server->game.started)
 					{
+						time_remaining_sec = server->game.time_sec;
+						// Если таймер отключен (banana), берем sudden_death_timer как приблизительное время
 						if (g_config.states.gameplay.banana.disable_timer)
 						{
-							// Обратный отсчёт до sudden death
-							int elapsed_sec = (int)(server->game.elapsed / TICKSPERSEC);
-							time_remaining_sec = g_config.states.gameplay.sudden_death_timer - elapsed_sec;
+							time_remaining_sec = g_config.states.gameplay.sudden_death_timer - (int)(server->game.elapsed / TICKSPERSEC);
+							if (time_remaining_sec < 0) time_remaining_sec = 0;
 						}
-						else
-						{
-							// Обычный таймер — берём текущее значение напрямую
-							time_remaining_sec = server->game.time_sec;
-						}
-						
-						if (time_remaining_sec < 0) 
-							time_remaining_sec = 0;
 					}
-
-					report_status_to_master(server, time_remaining_sec);
-					api_report_timer = 0.0;
+					report_status_to_master(server);
+					api_report_timer = 0;
 				}
-
-				// Notify waiting players
-				notify_timer += server->delta * (1000.0 / TICKSPERSEC);
 				double current_interval = first_notification_done ? 30000.0 : 2000.0;
 				if (notify_timer >= current_interval)
 				{
@@ -846,6 +844,12 @@ bool server_worker(Server* server)
 					notify_timer = 0;
 					first_notification_done = true;
 				}
+				notify_timer += (1000.0 / 60.0); // ~16.6ms
+				// ------------------------------------------
+                // server->delta обычно 1, если мы в цикле fixed update.
+                // TICKSPERSEC = 60. 2000ms = 2 сек. 
+                // Здесь time_end возвращает миллисекунды (обычно), так что:
+                api_report_timer += (1000.0 / (double)TICKSPERSEC); // Прибавляем время кадра ~16.6ms
 			}
 			MutexUnlock(server->state_lock);
 			server->delta = 1;
