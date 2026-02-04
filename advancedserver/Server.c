@@ -102,10 +102,23 @@ void report_status_to_master(Server* server) // Изменили сигнату�
     // Время
     int time_rem = 0;
     if (server->state == ST_GAME && server->game.started) {
-        time_rem = server->game.time_sec - (int)(server->game.elapsed / TICKSPERSEC); // Примерный расчет
+        // ИСПРАВЛЕНИЕ:
+        // server->game.time_sec уже содержит актуальное оставшееся время (если таймер включен).
+        // Не нужно вычитать elapsed, так как time_sec уже декрементируется в Game.c.
+        
+        if (g_config.states.gameplay.banana.disable_timer) {
+            // Если таймер отключен (режим banana), time_sec идет вверх, 
+            // поэтому считаем остаток до Sudden Death
+            time_rem = g_config.states.gameplay.sudden_death_timer - server->game.time_sec;
+        } else {
+            // Обычный режим: просто берем текущее значение таймера
+            time_rem = server->game.time_sec;
+        }
+
         if (time_rem < 0) time_rem = 0;
     }
     cJSON_AddNumberToObject(root, "time_remaining", time_rem);
+
 
     // МАССИВ ИГРОКОВ
     cJSON* players_arr = cJSON_CreateArray();
