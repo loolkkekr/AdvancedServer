@@ -2,9 +2,9 @@ name: Compile Server
 
 on:
   push:
-    branches: [ "stable" ]
+    branches: [ "stable", "dev" ]
   pull_request:
-    branches: [ "stable" ]
+    branches: [ "stable", "dev" ]
 
 jobs:
   build:
