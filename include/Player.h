@@ -26,6 +26,7 @@ typedef struct
 	double		timeout;
 
 	uint8_t 	mod_tool;
+	int8_t min_hp;
 	uint32_t 	mod_tool_timer;
 	uint32_t	chunk;
 	TimeStamp	last_packet;
