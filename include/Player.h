@@ -65,7 +65,6 @@ typedef struct
 		double		braindead_time;
 		bool		brain_damage;
 
-		int8_t min_hp; /* test */
 		uint16_t	stun_time;
 		uint16_t	stuns;
 		uint16_t	hp_restored;
