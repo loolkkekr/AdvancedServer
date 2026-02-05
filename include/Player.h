@@ -26,7 +26,6 @@ typedef struct
 	double		timeout;
 
 	uint8_t 	mod_tool;
-	int8_t min_hp;
 	uint32_t 	mod_tool_timer;
 	uint32_t	chunk;
 	TimeStamp	last_packet;
@@ -55,6 +54,12 @@ typedef struct
 	uintptr_t	data[4]; /* Can be used as pointer/data field */
 	Vector2		start_pos;
 	Vector2		pos;
+
+	/* Anti-cheat HP */
+
+	int8_t min_hp;
+	int8_t expected_hp;
+	int16_t heal_rings_collected;
 
 	struct
 	{
