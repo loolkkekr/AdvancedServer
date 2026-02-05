@@ -55,6 +55,12 @@ typedef struct
 	Vector2		start_pos;
 	Vector2		pos;
 
+	/* Anti-cheat HP */
+
+	int8_t min_hp;
+	int8_t expected_hp;
+	int16_t heal_rings_collected;
+
 	struct
 	{
 		double		survive_time;
