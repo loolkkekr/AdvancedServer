@@ -580,7 +580,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
 				return true;
 			}
-
+			v->plr.server_hp += 20; // Добавляем 20 ХП (или сколько у вас настроено в клиенте)
+			if (v->plr.server_hp > 100) 
+				v->plr.server_hp = 100;
 			server_broadcast_ex(v->server, packet, true, v->id);
 			break;
 		}
