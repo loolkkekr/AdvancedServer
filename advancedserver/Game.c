@@ -1331,7 +1331,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 							// === НОВАЯ ПРОВЕРКА HP ===
 							if (g_config.states.gameplay.anticheat.data_based_anticheat) {
 								int8_t max_hp_limit = 100;
-								if (v->plr.flags & PLAYER_DEMONIZED) max_hp_limit = 666; // или другое значение для демонов
+								if { (v->plr.flags & PLAYER_DEMONIZED) max_hp_limit = 10000; }
 								
 								// Проверка абсолютного максимума
 								if (hp > max_hp_limit) {
