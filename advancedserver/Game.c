@@ -1234,7 +1234,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					
 					// Сбрасываем кольца только другим помощникам
 					data->plr.heal_rings_collected -= 3;
-					data->plr.rings = 3;
+					data->plr.rings -= 3;
 					PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
 					packet_send(data->peer, &pack, true);
 					Debug("Removed rings from helper %d", to_revive->plr.revival_init[i]);
