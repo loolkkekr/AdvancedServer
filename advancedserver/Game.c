@@ -1216,7 +1216,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
-				to_revive->plr.heal_rings_collected = 0
+				to_revive->plr.heal_rings_collected = 0;
 				to_revive->plr.expected_hp = 40;
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
