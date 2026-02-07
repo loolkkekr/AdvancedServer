@@ -1236,10 +1236,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					PeerData* data = server_find_peer(v->server, to_revive->plr.revival_init[i]);
 					if(!data)
 						continue;
-					data->plr.heal_rings_collected -= 3;
 					PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
 					packet_send(data->peer, &pack, true);
-
+					data->plr.heal_rings_collected -= 3;
 					Debug("Removed rings from %d", to_revive->plr.revival_init[i]);
 				}
 
