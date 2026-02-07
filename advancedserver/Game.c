@@ -131,7 +131,6 @@ bool game_init(int exe, int8_t map, Server* server)
 
 	// Setup cooldowns
     //time_start(&server->game.tails_last_proj);
-	
 	memset(server->game.rings, 0, sizeof(server->game.rings));
     //memset(server->game.cooldowns, 0, sizeof(server->game.cooldowns));
 
@@ -153,8 +152,11 @@ bool game_init(int exe, int8_t map, Server* server)
 			continue;
 
 		memset(&v->plr, 0, sizeof(Player));
-		v->plr.server_hp = 100; 
-		v->plr.hp_cheat_timer = 0;
+		
+		// Инициализация серверного HP и таймера
+		v->plr.server_hp = 100;
+		v->plr.hp_grace = 0.0;
+
 		if (v->id == server->game.exe)
 			SET_FLAG(v->plr.flags, PLAYER_KILLER);
 
@@ -612,10 +614,16 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				break;
 			}
 
-            v->plr.server_hp += 20;
-            if (v->plr.server_hp > 100) 
-                v->plr.server_hp = 100;
-			v->plr.hp_cheat_timer = 0; 
+			// --- Server-side Health Update ---
+			v->plr.server_hp += 20;
+			if (v->plr.server_hp > 100) 
+				v->plr.server_hp = 100;
+			
+			// Устанавливаем таймер "неуязвимости" для обновления HP от клиента на 1.5 сек,
+			// чтобы игнорировать старые пакеты, пришедшие из-за лагов.
+			v->plr.hp_grace = 1.5 * TICKSPERSEC;
+			// ---------------------------------
+
 			v->plr.heal_rings = 0;
 			v->plr.stats.hp_restored++;
 
@@ -1131,9 +1139,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						} else {
 							v->plr.death_timer_sec = g_config.states.gameplay.respawn_time;
 						}
-					} else {
-						v->plr.death_timer_sec = g_config.states.gameplay.respawn_time;
-					}
 
 
 					PacketCreate(&pack, SERVER_GAME_DEATHTIMER_TICK);
@@ -1220,10 +1225,15 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			else
 			{
 				to_revive->plr.stats.rings = 0;
-				to_revive->plr.server_hp = 40;
-				to_revive->plr.hp_cheat_timer = 0;
+
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
+
+				// --- Обновление HP при возрождении ---
+				to_revive->plr.server_hp = 40;
+				// Даем 2 секунды иммунитета от обновлений HP клиентом (защита от race condition)
+				to_revive->plr.hp_grace = 2.0 * TICKSPERSEC;
+				// -------------------------------------
 
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
@@ -1325,33 +1335,49 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				{
 					if (v->server->game.exe != v->id)
 					{
-                        if (hp > v->plr.server_hp)
-                        {
-                            // Мы НЕ верим клиенту. server_hp НЕ обновляется.
-                            
-                            // Увеличиваем счетчик "подозрения" (таймер тиков/пакетов)
-                            v->plr.hp_cheat_timer++;
+						v->plr.rings = rings;
 
-                            // Если несоответствие длится больше ~60 пакетов (около 1-2 секунд лагов)
-                            // Значит пакет лечения так и не пришел, а HP все еще высокое -> ЧИТ.
-                            if (v->plr.hp_cheat_timer > 60)
+						// --- ANTI-CHEAT HP VALIDATION ---
+                        // Если HP от клиента больше серверного - кик.
+						if (hp > v->plr.server_hp)
+						{
+                            char msg[64];
+                            snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
+							server_disconnect(v->server, v->peer, DR_OTHER, msg);
+							return true;
+						}
+                        
+                        // Если HP меньше (урон), обновляем серверное значение.
+                        // НО! Если действует hp_grace, мы игнорируем понижение HP
+                        // (это значит, что клиент еще не знает, что сервер его вылечил/воскресил)
+                        if (v->plr.hp_grace <= 0)
+                        {
+                            // Доп. защита от нулевого HP, если игрок не мертв
+                            if (hp == 0 && !(v->plr.flags & PLAYER_DEAD))
                             {
-                                char msg[64];
-                                snprintf(msg, 64, "HP Cheat Detected (S:%d C:%d)", v->plr.server_hp, hp);
-                                server_disconnect(v->server, v->peer, DR_OTHER, msg);
-                                return true;
+                                // Игнорируем подозрительный 0
                             }
+                            else if (hp < v->plr.server_hp)
+                            {
+                                v->plr.server_hp = hp;
+                            }
+                        }
+                        // ---------------------------------
 
-                            // Если таймер маленький (просто лаг пакета HEAL), мы игнорируем это 'hp'
-                            // и ждем, пока придет пакет HEAL, который поднимет server_hp.
-                        }
-                        // 2. Клиент заявляет HP меньше или равно (получил урон)
-                        else
-                        {
-                            // Это валидно. Игрок имеет право умирать.
-                            v->plr.server_hp = hp;
-                            v->plr.hp_cheat_timer = 0; // Сбрасываем подозрения
-                        }
+						if (revival < 2)
+						{
+							if (rings < 0 || (v->server->game.map != 20 && rings >= 120) && g_config.states.gameplay.anticheat.data_based_anticheat)
+							{
+								server_disconnect(v->server, v->peer, DR_OTHER, "gomunkulus");
+								return true;
+							}
+
+							if (hp > 100 && g_config.states.gameplay.anticheat.data_based_anticheat)
+							{
+								server_disconnect(v->server, v->peer, DR_OTHER, "garic forn — Сьогодні о 04:31");
+								return true;
+							}
+						}
 					}
 				}
 
@@ -1584,6 +1610,10 @@ bool game_player_tick(Server* server)
             else
                 data->plr.cooldown = 0;
         }
+
+        // Обновление таймера "милости" для HP (anti-cheat lag compensation)
+        if (data->plr.hp_grace > 0)
+            data->plr.hp_grace -= server->delta;
 
 		// ping check
 		if (server->delta < 2.5)

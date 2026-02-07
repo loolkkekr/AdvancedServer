@@ -59,7 +59,7 @@ typedef struct
 
 	int8_t min_hp;
 	int8_t      server_hp; 
-	uint16_t    hp_cheat_timer;
+	double      hp_grace;
 	int8_t expected_hp;
 	int16_t heal_rings_collected;
 
