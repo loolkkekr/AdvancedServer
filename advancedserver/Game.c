@@ -602,6 +602,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				return true;
 			}
 
+			v->plr.server_hp += 40;
+			if (v->plr.server_hp > 100) 
+				v->plr.server_hp = 100;
 			if (v->plr.mod_tool)
 			{
 				Packet pack;
@@ -615,9 +618,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			}
 
 			// --- Server-side Health Update ---
-			v->plr.server_hp += 40;
-			if (v->plr.server_hp > 100) 
-				v->plr.server_hp = 100;
 			
 			// Устанавливаем таймер "неуязвимости" для обновления HP от клиента на 1.5 сек,
 			// чтобы игнорировать старые пакеты, пришедшие из-за лагов.
@@ -1225,12 +1225,11 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			else
 			{
 				to_revive->plr.stats.rings = 0;
-
+				to_revive->plr.server_hp = 40;
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
 
 				// --- Обновление HP при возрождении ---
-				to_revive->plr.server_hp = 40;
 				// Даем 2 секунды иммунитета от обновлений HP клиентом (защита от race condition)
 				to_revive->plr.hp_grace = 2.0 * TICKSPERSEC;
 				// -------------------------------------
