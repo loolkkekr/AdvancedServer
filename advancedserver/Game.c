@@ -605,7 +605,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				return true;
 			}
 
-			v->plr.server_hp += 40;
+			v->plr.server_hp += 20;
 			if (v->plr.server_hp > 100) 
 				v->plr.server_hp = 100;
 			v->plr.hp_grace = 1.5 * TICKSPERSEC;
