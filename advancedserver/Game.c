@@ -1224,20 +1224,10 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					if (to_revive->plr.revival_init[i] == -1) break;
 					PeerData* data = server_find_peer(v->server, to_revive->plr.revival_init[i]);
 					if(!data) continue;
-					
-					// !!! FIX: Пропускаем инициатора, у него уже корректные значения после вычитания
-					if (data->id == v->id) {
-						// Убедимся, что у инициатора heal_rings_collected соответствует rings
-						// после траты колец на возрождение (уже сделано выше)
-						continue;
-					}
-					
-					// Сбрасываем кольца только другим помощникам
-					data->plr.heal_rings_collected -= 3;
-					data->plr.rings -= 3;
+					// НЕ сбрасываем heal_rings_collected и rings - они уже корректно 
+					// уменьшены в момент отправки CLIENT_REVIVAL_PROGRESS каждым игроком
 					PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
 					packet_send(data->peer, &pack, true);
-					Debug("Removed rings from helper %d", to_revive->plr.revival_init[i]);
 				}
 				Info("%s " LOG_RST "(id %d)" LOG_GRN " was revived!", to_revive->nickname.value, to_revive->id);
 			}
