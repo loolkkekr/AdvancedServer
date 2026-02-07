@@ -1194,18 +1194,19 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					bool has = false;
 					int ind = 0;
 
-					for (int i = 0; i < 5; i++)
-					{
-						if (to_revive->plr.revival_init[i] == -1)
-						{
-							ind = i;
-							break;
-						}
-
-						if (to_revive->plr.revival_init[i] == v->id)
-							has = true;
+					for (int i = 0; i < 5; i++) {
+						if (to_revive->plr.revival_init[i] == -1) break;
+						PeerData* data = server_find_peer(v->server, to_revive->plr.revival_init[i]);
+						if(!data) continue;
+						
+						// Сбрасываем heal_rings_collected у тех, кто помогал с возрождением
+						// (или уменьшаем на количество потраченных колец, если известно)
+						data->plr.heal_rings_collected -= 3; // или -= 3; если тратили 3 кольца
+						
+						PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
+						packet_send(data->peer, &pack, true);
+						Debug("Removed rings from %d", to_revive->plr.revival_init[i]);
 					}
-
 					if (!has)
 						to_revive->plr.revival_init[ind] = v->id;
 				}
@@ -1216,8 +1217,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
-				to_revive->plr.heal_rings_collected = 0;
+
 				to_revive->plr.expected_hp = 40;
+				to_revive->plr.heal_rings_collected = 20;
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
 				PacketWrite(&pack, packet_write16, to_revive->id);
@@ -1225,6 +1227,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 				PacketCreate(&pack, SERVER_REVIVAL_REVIVED);
 				packet_send(to_revive->peer, &pack, true);
+
 
 				for (int i = 0; i < 5; i++)
 				{
