@@ -605,6 +605,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			v->plr.server_hp += 40;
 			if (v->plr.server_hp > 100) 
 				v->plr.server_hp = 100;
+			v->plr.hp_grace = 1.5 * TICKSPERSEC;
 			if (v->plr.mod_tool)
 			{
 				Packet pack;
@@ -621,7 +622,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			
 			// Устанавливаем таймер "неуязвимости" для обновления HP от клиента на 1.5 сек,
 			// чтобы игнорировать старые пакеты, пришедшие из-за лагов.
-			v->plr.hp_grace = 1.5 * TICKSPERSEC;
 			// ---------------------------------
 
 			v->plr.heal_rings = 0;
@@ -1355,6 +1355,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                             {
                                 v->plr.server_hp = hp;
                             }
+							v->plr.hp_grace = 2
                         }
                         
                         // Если HP меньше (урон), обновляем серверное значение.
