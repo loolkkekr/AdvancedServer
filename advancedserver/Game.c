@@ -615,7 +615,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			}
 
 			// --- Server-side Health Update ---
-			v->plr.server_hp += 20;
+			v->plr.server_hp += 40;
 			if (v->plr.server_hp > 100) 
 				v->plr.server_hp = 100;
 			
