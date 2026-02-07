@@ -131,6 +131,7 @@ bool game_init(int exe, int8_t map, Server* server)
 
 	// Setup cooldowns
     //time_start(&server->game.tails_last_proj);
+	
 	memset(server->game.rings, 0, sizeof(server->game.rings));
     //memset(server->game.cooldowns, 0, sizeof(server->game.cooldowns));
 
@@ -152,7 +153,7 @@ bool game_init(int exe, int8_t map, Server* server)
 			continue;
 
 		memset(&v->plr, 0, sizeof(Player));
-		
+		v->plr.server_hp = 100; 
 		if (v->id == server->game.exe)
 			SET_FLAG(v->plr.flags, PLAYER_KILLER);
 
@@ -610,6 +611,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				break;
 			}
 
+            v->plr.server_hp += 20;
+            if (v->plr.server_hp > 100) 
+                v->plr.server_hp = 100;
 			v->plr.heal_rings = 0;
 			v->plr.stats.hp_restored++;
 
@@ -1214,7 +1218,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			else
 			{
 				to_revive->plr.stats.rings = 0;
-
+				to_revive->plr.server_hp = 40;
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
 
@@ -1318,7 +1322,16 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				{
 					if (v->server->game.exe != v->id)
 					{
+                        if (hp > v->plr.server_hp)
+                        {
+                            // Можно добавить небольшую погрешность или сразу кикать
+                            char msg[64];
+                            snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
+                            server_disconnect(v->server, v->peer, DR_OTHER, msg);
+                            return true;
+                        }
 						v->plr.rings = rings;
+						v->plr.server_hp = hp;
 						if (revival < 2)
 						{
 							if (rings < 0 || (v->server->game.map != 20 && rings >= 120) && g_config.states.gameplay.anticheat.data_based_anticheat)
