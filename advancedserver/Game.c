@@ -1210,7 +1210,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
 				to_revive->plr.expected_hp = 40;
-				to_revive->plr.heal_rings_collected = 20; // 40 HP = 20 колец для хила
+				to_revive->plr.heal_rings_collected = 0; // 40 HP = 20 колец для хила
 				
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
@@ -1225,13 +1225,19 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					PeerData* data = server_find_peer(v->server, to_revive->plr.revival_init[i]);
 					if(!data) continue;
 					
-					// Сбрасываем кольца у помощников, чтобы не было кика за "ring hack"
-					data->plr.heal_rings_collected = 0;
-					data->plr.rings = 0; // <-- И здесь тоже сбрасываем
+					// !!! FIX: Пропускаем инициатора, у него уже корректные значения после вычитания
+					if (data->id == v->id) {
+						// Убедимся, что у инициатора heal_rings_collected соответствует rings
+						// после траты колец на возрождение (уже сделано выше)
+						continue;
+					}
 					
+					// Сбрасываем кольца только другим помощникам
+					data->plr.heal_rings_collected -= 3;
+					data->plr.rings = 3;
 					PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
 					packet_send(data->peer, &pack, true);
-					Debug("Removed rings from %d", to_revive->plr.revival_init[i]);
+					Debug("Removed rings from helper %d", to_revive->plr.revival_init[i]);
 				}
 				Info("%s " LOG_RST "(id %d)" LOG_GRN " was revived!", to_revive->nickname.value, to_revive->id);
 			}
@@ -1308,7 +1314,11 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED)) {
 					if (v->server->game.exe != v->id) {
 						v->plr.rings = rings;
-						if (v->plr.rings > v->plr.heal_rings_collected) {
+						if (v->plr.flags & PLAYER_REVIVED) {
+							// Синхронизируем heal_rings_collected с клиентом после воскрешения
+							v->plr.heal_rings_collected = 0;
+							DEL_FLAG(v->plr.flags, PLAYER_REVIVED);
+						} else if (v->plr.rings > v->plr.heal_rings_collected) {
 							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
 							return true;
 						}
