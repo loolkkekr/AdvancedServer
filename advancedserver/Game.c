@@ -440,6 +440,7 @@ bool game_demonize(Server* server, PeerData* data)
 		DEL_FLAG(data->plr.flags, PLAYER_DEAD);
 		SET_FLAG(data->plr.flags, PLAYER_DEMONIZED);
 		data->plr.expected_hp = 10000;
+		data->plr.heal_rings_collected = 0;
 		data->plr.stats.rings = 0;
 
 		// reset cooldown
@@ -681,6 +682,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 		{
 			AssertOrDisconnect(v->server, v->in_game);
 			server_broadcast_ex(v->server, packet, true, v->id);
+			v->plr.heal_rings = 0;
 			break;
 		}
 
@@ -1214,6 +1216,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
+				to_revive->plr.heal_rings_collected = 0
 				to_revive->plr.expected_hp = 40;
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
@@ -1314,6 +1317,10 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED)) {
 					if (v->server->game.exe != v->id) {
 						v->plr.rings = rings;
+						if (rings > v->plr.heal_rings_collected) {
+							server_disconnect(v->server, v->peer, DR_OTHER, "hp heal cheat");
+							return true;
+						}
 						if (revival < 2) {
 							// Проверка на минимальное/максимальное количество колец
 							if (g_config.states.gameplay.anticheat.data_based_anticheat && rings >= 140 && v->server->game.map != 20) {
