@@ -681,8 +681,8 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 		case CLIENT_PLAYER_HURT:
 		{
 			AssertOrDisconnect(v->server, v->in_game);
-			server_broadcast_ex(v->server, packet, true, v->id);
 			v->plr.heal_rings = 0;
+			server_broadcast_ex(v->server, packet, true, v->id);
 			break;
 		}
 
