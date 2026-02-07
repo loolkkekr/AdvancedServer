@@ -1215,7 +1215,12 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				for (int i = 0; i < 5; i++)
 				{
 					if (to_revive->plr.revival_init[i] == v->id)
-						data->plr.heal_rings_collected = 0;
+						PeerData* data = server_find_peer(v->server, to_revive->plr.revival_init[i]);
+						if(!data) continue;
+						
+						// Сбрасываем heal_rings_collected у тех, кто помогал с возрождением
+						// (или уменьшаем на количество потраченных колец, если известно)
+						data->plr.heal_rings_collected = 0; // или -= 3;
 				}
 				to_revive->plr.stats.rings = 0;
 
