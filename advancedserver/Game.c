@@ -1338,17 +1338,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 						// --- ANTI-CHEAT HP VALIDATION ---
                         // Если HP от клиента больше серверного - кик.
-						if (hp > v->plr.server_hp)
-						{
-                            char msg[64];
-                            snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
-							server_disconnect(v->server, v->peer, DR_OTHER, msg);
-							return true;
-						}
-                        
-                        // Если HP меньше (урон), обновляем серверное значение.
-                        // НО! Если действует hp_grace, мы игнорируем понижение HP
-                        // (это значит, что клиент еще не знает, что сервер его вылечил/воскресил)
                         if (v->plr.hp_grace <= 0)
                         {
                             // Доп. защита от нулевого HP, если игрок не мертв
@@ -1361,6 +1350,17 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                                 v->plr.server_hp = hp;
                             }
                         }
+						if (hp > v->plr.server_hp)
+						{
+                            char msg[64];
+                            snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
+							server_disconnect(v->server, v->peer, DR_OTHER, msg);
+							return true;
+						}
+                        
+                        // Если HP меньше (урон), обновляем серверное значение.
+                        // НО! Если действует hp_grace, мы игнорируем понижение HP
+                        // (это значит, что клиент еще не знает, что сервер его вылечил/воскресил)
                         // ---------------------------------
 
 						if (revival < 2)
