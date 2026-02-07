@@ -1339,6 +1339,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 								if (hp > max_hp_limit) {
 									server_disconnect(v->server, v->peer, DR_OTHER, "hp overflow");
 									return true;
+								else if (hp < v->plr.expected_hp) {
+									v->plr.expected_hp = hp;
+									v->plr.heal_rings_collected = 0;
 								}
 								
 								// Если HP выросло - проверяем, хватило ли колец
