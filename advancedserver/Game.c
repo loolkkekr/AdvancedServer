@@ -1389,7 +1389,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 								
 								// Допустимое отклонение: +25 (одно лечение) + 5 (погрешность)
 								// Потому что игрок мог собрать 10 колец, но еще не активировать хил
-								int max_allowed = v->plr.expected_hp + 25 + 5;
+								int max_allowed = v->plr.expected_hp;
 								if (max_allowed > 100) max_allowed = 100;
 								
 								// Также учитываем текущие кольца: каждые 10 = потенциальный +25 HP
