@@ -1317,8 +1317,8 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED)) {
 					if (v->server->game.exe != v->id) {
 						v->plr.rings = rings;
-						if (rings > v->plr.heal_rings_collected) {
-							server_disconnect(v->server, v->peer, DR_OTHER, "hp heal cheat");
+						if (v->plr.rings > v->plr.heal_rings_collected) {
+							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
 							return true;
 						}
 						if (revival < 2) {
