@@ -1335,12 +1335,17 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					if (v->server->game.exe != v->id)
 					{
 						v->plr.rings = rings;
-						snprintf(msg, 64, "(%d > %d)", hp, v->plr.server_hp);
-						Info(LOG_YLW msg);
 						// --- ANTI-CHEAT HP VALIDATION ---
                         // Если HP от клиента больше серверного - кик.
                         if (v->plr.hp_grace <= 0)
                         {
+							if (hp > v->plr.server_hp)
+							{
+								char msg[64];
+								snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
+								server_disconnect(v->server, v->peer, DR_OTHER, msg);
+								return true;
+							}
                             // Доп. защита от нулевого HP, если игрок не мертв
                             if (hp == 0 && !(v->plr.flags & PLAYER_DEAD))
                             {
@@ -1351,13 +1356,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                                 v->plr.server_hp = hp;
                             }
                         }
-						if (hp > v->plr.server_hp)
-						{
-                            char msg[64];
-                            snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
-							server_disconnect(v->server, v->peer, DR_OTHER, msg);
-							return true;
-						}
                         
                         // Если HP меньше (урон), обновляем серверное значение.
                         // НО! Если действует hp_grace, мы игнорируем понижение HP
