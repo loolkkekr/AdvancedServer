@@ -439,7 +439,6 @@ bool game_demonize(Server* server, PeerData* data)
 		SET_FLAG(data->plr.flags, PLAYER_DEMONIZED);
 		
 		data->plr.stats.rings = 0;
-		data->plr.min_hp = 0; // Сбрасываем min_hp при демонизации
 
 		// reset cooldown
         if(g_config.states.gameplay.anticheat.ability_anticheat)
@@ -1218,7 +1217,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
-				to_revive->plr.min_hp = 100; // Сбрасываем при возрождении - у игрока полное HP
 
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
@@ -1290,7 +1288,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-	case CLIENT_PLAYER_DATA:
+		case CLIENT_PLAYER_DATA:
 		{
 			if (!v->server->game.started)
 				break;
@@ -1329,37 +1327,10 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 								return true;
 							}
 
-							// Проверка HP: не может быть больше 100
 							if (hp > 100 && g_config.states.gameplay.anticheat.data_based_anticheat)
 							{
 								server_disconnect(v->server, v->peer, DR_OTHER, "garic forn — Сьогодні о 04:31");
 								return true;
-							}
-
-							// НОВАЯ ПРОВЕРКА: отслеживаем минимальное HP
-							if (g_config.states.gameplay.anticheat.data_based_anticheat)
-							{
-								// Инициализация min_hp при первом получении данных
-								if (v->plr.min_hp == 0 && hp > 0)
-								{
-									v->plr.min_hp = hp;
-								}
-								
-								// Проверяем, не восстановил ли игрок HP больше, чем должно быть возможно
-								// Допустимый порог: +5 HP (для учета лагов/пинга при легитимном хиле)
-								if (hp > v->plr.min_hp + 5)
-								{
-									char msg[256];
-									snprintf(msg, 256, "Code error: 5", v->plr.min_hp, hp);
-									server_disconnect(v->server, v->peer, DR_OTHER, msg);
-									return true;
-								}
-
-								// Обновляем min_hp если текущее HP ниже
-								if (hp < v->plr.min_hp)
-								{
-									v->plr.min_hp = hp;
-								}
 							}
 						}
 					}
