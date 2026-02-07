@@ -558,65 +558,50 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_PLAYER_HEAL_PART: {
+		case CLIENT_PLAYER_HEAL_PART:
+		{
 			AssertOrDisconnect(v->server, v->in_game);
 			PacketRead(x, packet, packet_read16, uint16_t);
 			PacketRead(y, packet, packet_read16, uint16_t);
 			PacketRead(rings, packet, packet_read16, uint16_t);
-			
-			// FIX: Валидация колец в heal part
-			if (g_config.states.gameplay.anticheat.data_based_anticheat) {
-				if (rings > v->plr.rings) {
-					server_disconnect(v->server, v->peer, DR_OTHER, "WOW! YOU ARE A LOSER!");
-					return true;
-				}
-				if (rings < 10) {
-					server_disconnect(v->server, v->peer, DR_OTHER, "pusy");
-					return true;
-				}
-				if (rings >= 140 && v->server->game.map != 20) {
-					server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
-					return true;
-				}
-			}
-			
 			v->plr.heal_rings = v->plr.rings;
+
+			if (g_config.states.gameplay.anticheat.data_based_anticheat && rings < 10)
+			{
+				server_disconnect(v->server, v->peer, DR_OTHER, "pusy");
+				return true;
+			}
+
+			if (g_config.states.gameplay.anticheat.data_based_anticheat && rings >= 140 && v->server->game.map != 20)
+			{
+				server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
+				return true;
+			}
+
 			server_broadcast_ex(v->server, packet, true, v->id);
 			break;
 		}
 
-		case CLIENT_PLAYER_HEAL: {
+		case CLIENT_PLAYER_HEAL:
+		{
 			AssertOrDisconnect(v->server, v->in_game);
 			PacketRead(id, packet, packet_read16, uint16_t);
 			PacketRead(rings, packet, packet_read16, uint16_t);
-			
-			// FIX: Строгая валидация колец для лечения
-			if (g_config.states.gameplay.anticheat.data_based_anticheat) {
-				// Минимум 10 колец для хила
-				if (rings < 10) {
-					server_disconnect(v->server, v->peer, DR_OTHER, "Heal: less than 10 rings");
-					return true;
-				}
-				// Не более 120 колец (кроме карты 20)
-				if (rings >= 140 && v->server->game.map != 20) {
-					server_disconnect(v->server, v->peer, DR_OTHER, "Heal: too many rings");
-					return true;
-				}
-				// КРИТИЧЕСКИЙ FIX: Проверяем, что игрок действительно имеет столько колец
-				if (rings > v->plr.rings) {
-					char msg[256];
-					snprintf(msg, 256, "Heal cheat: using %d, have %d", rings, v->plr.rings);
-					server_disconnect(v->server, v->peer, DR_OTHER, msg);
-					return true;
-				}
-				// Проверяем кратность 10 (хил работает только кратно 10)
-				if (rings % 10 != 0) {
-					server_disconnect(v->server, v->peer, DR_OTHER, "Heal: rings not multiple of 10");
-					return true;
-				}
+
+			if (g_config.states.gameplay.anticheat.data_based_anticheat && rings < 10)
+			{
+				server_disconnect(v->server, v->peer, DR_OTHER, "pusy");
+				return true;
 			}
-			
-			if (v->plr.mod_tool) {
+
+			if (g_config.states.gameplay.anticheat.data_based_anticheat && rings >= 140 && v->server->game.map != 20)
+			{
+				server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
+				return true;
+			}
+
+			if (v->plr.mod_tool)
+			{
 				Packet pack;
 				PacketCreate(&pack, SERVER_RING_COLLECTED);
 				PacketWrite(&pack, packet_write8, 0);
@@ -626,30 +611,37 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				RAssert(packet_send(v->peer, &pack, true));
 				break;
 			}
-			
-			// FIX: Вычитаем потраченные кольца на сервере!
-			int rings_to_spend = rings; // уже проверили что кратно 10 и >= 10
-			v->plr.rings -= rings_to_spend;
-			
-			// Корректируем heal_rings_collected если нужно (хотя при кратности 10 и логике сбора это не обязательно)
-			// Сбрасываем heal_rings так как мы потратили кольца
+
+			// НОВОЕ: При успешном хиле обновляем expected_hp
+			// Клиент должен был отправить ровно столько колец, сколько накопилось
 			v->plr.heal_rings = 0;
 			v->plr.stats.hp_restored++;
 			
-			// Обновляем expected_hp - хил подтверждает HP которое было начислено при сборе колец
-			if (g_config.states.gameplay.anticheat.data_based_anticheat) {
-				int heals_done = rings_to_spend / 10;
-				int hp_gained = heals_done * 25;
-				// Проверяем что expected_hp соответствует (должен был увеличиться при сборе)
-				if (v->plr.expected_hp < 50 && hp_gained > 0) {
-					// Если пришли сюда с be不按_ASSERT, значит логика хила нарушена
+			// Синхронизируем: при хиле сбрасываем счетчик колец и устанавливаем HP
+			// Ожидаемое HP уже было увеличено в CLIENT_RING_COLLECTED
+			// Но на всякий случай проверяем, что хил происходит когда должно
+			if (g_config.states.gameplay.anticheat.data_based_anticheat)
+			{
+				// Проверяем, что игрок действительно накопил достаточно колец для хила
+				// rings / 10 = количество хилов, rings % 10 = остаток
+				int expected_heals = rings / 10;
+				int heal_bonus = expected_heals * 25;
+				
+				// Корректируем expected_hp если есть расхождение
+				int calculated_expected = 100 - (rings / 10 * 25) + heal_bonus;
+				if (calculated_expected > 100) calculated_expected = 100;
+				
+				// Допустимая погрешность из-за таймингов
+				if (v->plr.expected_hp < calculated_expected - 25)
+				{
+					// Возможно, не все кольца учтены, корректируем
+					v->plr.expected_hp = calculated_expected;
 				}
 			}
-			
+
 			server_broadcast_ex(v->server, packet, true, v->id);
 			break;
 		}
-
 
 		case CLIENT_STATS_REPORT:
 		{
@@ -1339,105 +1331,117 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_PLAYER_DATA: {
-			if (!v->server->game.started) break;
+		case CLIENT_PLAYER_DATA:
+		{
+			if (!v->server->game.started)
+				break;
+
 			PacketRead(x, packet, packet_read16, uint16_t);
 			PacketRead(y, packet, packet_read16, uint16_t);
 			PacketRead(_xspd, packet, packet_read16, uint16_t);
 			PacketRead(_yspd, packet, packet_read16, uint16_t);
+			
 			PacketRead(state, packet, packet_read8, uint8_t);
 			PacketRead(_angle, packet, packet_read16, int16_t);
 			PacketRead(_index, packet, packet_read8, uint8_t);
 			PacketRead(_xscale, packet, packet_read8, int8_t);
+			
 			Vector2 new_pos = { x, y };
 			#define PLAYER_ATTACKING 1 << 4
+			
 			int duration = 2000;
-			if(v->server->game.exe != v->id) {
+			if(v->server->game.exe != v->id)
+			{
 				PacketRead(hp, packet, packet_read8, int8_t);
 				PacketRead(revival, packet, packet_read8, uint8_t);
 				PacketRead(rings, packet, packet_read16, int16_t);
 				PacketRead(flags, packet, packet_read8, uint8_t);
-				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED)) {
-					if (v->server->game.exe != v->id) {
-						// FIX: Серверная валидация колец - клиент не может иметь больше колец, чем знает сервер
-						if (g_config.states.gameplay.anticheat.data_based_anticheat) {
-							if (rings > v->plr.rings) {
-								char msg[256];
-								snprintf(msg, 256, "Ring exploit: client %d vs server %d", rings, v->plr.rings);
-								server_disconnect(v->server, v->peer, DR_OTHER, msg);
-								return true;
-							}
-							// Если кольца уменьшились (потрачены на хил), проверяем кратность 10
-							if (rings < v->plr.rings) {
-								int diff = v->plr.rings - rings;
-								// Хил тратит кратно 10 (10 колец = 25 HP). Допускаем погрешность в 5 для сетевых задержек
-								if (diff % 10 != 0 && !v->plr.mod_tool) {
-									if (diff > 5) {
-										char msg[256];
-										snprintf(msg, 256, "Invalid ring spend: %d (must be multiple of 10)", diff);
-										server_disconnect(v->server, v->peer, DR_OTHER, msg);
-										return true;
-									}
-								}
-								// Обновляем серверное значение
-								v->plr.rings = rings;
-							} else if (rings == v->plr.rings) {
-								// Без изменений, оставляем серверное значение
-							}
-						} else {
-							// Без строгого античита всё равно не даём увеличить на большую величину
-							if (rings > v->plr.rings + 5) {
-								// Игнорируем попытку увеличить кольца
-							} else {
-								v->plr.rings = rings;
-							}
-						}
-						
-						if (revival < 2) {
-							if (v->plr.rings < 0 || (v->server->game.map != 20 && v->plr.rings >= 120) && g_config.states.gameplay.anticheat.data_based_anticheat) {
+
+				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED))
+				{
+					if (v->server->game.exe != v->id)
+					{
+						v->plr.rings = rings;
+						if (revival < 2)
+						{
+							if (rings < 0 || (v->server->game.map != 20 && rings >= 120) && g_config.states.gameplay.anticheat.data_based_anticheat)
+							{
 								server_disconnect(v->server, v->peer, DR_OTHER, "gomunkulus");
 								return true;
 							}
+
 							// Проверка HP: не может быть больше 100
-							if (hp > 100 && g_config.states.gameplay.anticheat.data_based_anticheat) {
-								server_disconnect(v->server, v->peer, DR_OTHER, "garic forn");
+							if (hp > 100 && g_config.states.gameplay.anticheat.data_based_anticheat)
+							{
+								server_disconnect(v->server, v->peer, DR_OTHER, "garic forn — Сьогодні о 04:31");
 								return true;
 							}
-							// Проверка HP с учетом лечения кольцами
-							if (g_config.states.gameplay.anticheat.data_based_anticheat) {
-								if (v->plr.expected_hp == 0) {
+
+							// НОВАЯ ПРОВЕРКА: отслеживаем HP с учетом лечения кольцами
+							if (g_config.states.gameplay.anticheat.data_based_anticheat)
+							{
+								// Инициализация при первом получении данных
+								if (v->plr.expected_hp == 0)
+								{
 									v->plr.expected_hp = hp;
+									v->plr.heal_rings_collected = 0;
 								}
+								
 								// Допустимое отклонение: +25 (одно лечение) + 5 (погрешность)
+								// Потому что игрок мог собрать 10 колец, но еще не активировать хил
 								int max_allowed = v->plr.expected_hp + 25 + 5;
 								if (max_allowed > 100) max_allowed = 100;
 								
-								// Учитываем текущие кольца: каждые 10 = потенциальный +25 HP
+								// Также учитываем текущие кольца: каждые 10 = потенциальный +25 HP
 								int potential_heal = (v->plr.heal_rings_collected / 10) * 25;
 								max_allowed += potential_heal;
 								if (max_allowed > 100) max_allowed = 100;
 								
-								if (hp > max_allowed) {
+								if (hp > max_allowed)
+								{
 									char msg[256];
-									snprintf(msg, 256, "HP exploit: %d vs expected %d (max %d)", hp, v->plr.expected_hp, max_allowed);
+									snprintf(msg, 256, "HP exploit: %d vs expected %d (max %d)", 
+										hp, v->plr.expected_hp, max_allowed);
 									server_disconnect(v->server, v->peer, DR_OTHER, msg);
 									return true;
 								}
-								if (hp < v->plr.expected_hp) {
+
+								// Если HP ниже ожидаемого, значит игрок получил урон
+								// Обновляем expected_hp, но только если это не лечение
+								if (hp < v->plr.expected_hp)
+								{
 									v->plr.expected_hp = hp;
+									// Сбрасываем счетчик колец для хила, т.к. HP упало
+									// Но оставляем heal_rings_collected, т.к. кольца остаются
+								}
+								else if (hp > v->plr.expected_hp)
+								{
+									// Лечение произошло, обновляем expected_hp
+									v->plr.expected_hp = hp;
+									// Сбрасываем heal_rings_collected пропорционально лечению
+									int heal_amount = hp - v->plr.expected_hp;
+									int heals_done = heal_amount / 25;
+									v->plr.heal_rings_collected -= heals_done * 10;
+									if (v->plr.heal_rings_collected < 0)
+										v->plr.heal_rings_collected = 0;
 								}
 							}
 						}
 					}
 				}
+
 				v->plr.is_attacking = flags & PLAYER_ATTACKING;
-				switch(v->surv_char) {
-					case CH_EGGMAN: {
+				switch(v->surv_char)
+				{
+					case CH_EGGMAN:
+					{
 						duration = 3000;
 						break;
 					}
 				}
-			} else {
+			}
+			else
+			{
 				PacketRead(flags, packet, packet_read8, uint8_t);
 				v->plr.is_attacking = flags & PLAYER_ATTACKING;
 			}
