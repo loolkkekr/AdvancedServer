@@ -1589,15 +1589,6 @@ bool game_entity_tick(Server* server)
 
 bool game_player_tick(Server* server)
 {
-	// Update player cooldown
-    /*for (int i = 0; i < PLAYER_COOLCOUNT; i++)
-	{
-		if (server->game.cooldowns[i] > 0)
-			server->game.cooldowns[i] -= server->delta;
-		else
-			server->game.cooldowns[i] = 0;
-    }*/
-	
 	PeerData* exe = server_find_peer(server, server->game.exe);
 	if(!exe)
 		return true;
@@ -1792,7 +1783,7 @@ bool game_player_tick(Server* server)
 
 		if (data->plr.flags & PLAYER_DEAD && data->plr.death_timer_sec > 0)
 		{
-			Packet packet;
+			Packet packet; // <--- ОБЪЯВЛЕНИЕ ПЕРЕМЕННОЙ
 			bool exe_near = false;
 			bool demonized_near = false;
 
@@ -1846,11 +1837,11 @@ bool game_player_tick(Server* server)
 					}
 				}
 
-				PacketCreate(&pack, SERVER_GAME_DEATHTIMER_TICK);
-				PacketWrite(&pack, packet_write8, exe_near);
-				PacketWrite(&pack, packet_write16, data->id);
-				PacketWrite(&pack, packet_write8, data->plr.death_timer_sec);
-				server_broadcast(server, &pack, true);
+				PacketCreate(&packet, SERVER_GAME_DEATHTIMER_TICK); // <--- ИСПРАВЛЕНО (было &pack)
+				PacketWrite(&packet, packet_write8, exe_near);
+				PacketWrite(&packet, packet_write16, data->id);
+				PacketWrite(&packet, packet_write8, data->plr.death_timer_sec);
+				server_broadcast(server, &packet, true);
 
 				data->plr.death_timer = 0;
 			}
@@ -1915,8 +1906,8 @@ bool game_state_tick(Server* server)
                     Debug("Not enough space for rings");
 		}
 
-		Packet packet;
-		PacketCreate(&pack, SERVER_GAME_TIME_SYNC);
+		Packet packet; // <--- ОБЪЯВЛЕНИЕ ПЕРЕМЕННОЙ
+		PacketCreate(&packet, SERVER_GAME_TIME_SYNC); // <--- ИСПРАВЛЕНО (было &pack)
 		PacketWrite(&packet, packet_write16, (uint16_t)server->game.time_sec * TICKSPERSEC);
 		server_broadcast(server, &packet, true);
 
