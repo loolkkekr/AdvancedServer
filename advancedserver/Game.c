@@ -1316,10 +1316,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						v->plr.rings = rings;
 						if (revival < 2) {
 							// Проверка на минимальное/максимальное количество колец
-							if (g_config.states.gameplay.anticheat.data_based_anticheat && rings < 10) {
-								server_disconnect(v->server, v->peer, DR_OTHER, "pusy");
-								return true;
-							}
 							if (g_config.states.gameplay.anticheat.data_based_anticheat && rings >= 140 && v->server->game.map != 20) {
 								server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
 								return true;
