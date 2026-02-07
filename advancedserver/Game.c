@@ -154,6 +154,7 @@ bool game_init(int exe, int8_t map, Server* server)
 
 		memset(&v->plr, 0, sizeof(Player));
 		v->plr.server_hp = 100; 
+		v->plr.hp_cheat_timer = 0;
 		if (v->id == server->game.exe)
 			SET_FLAG(v->plr.flags, PLAYER_KILLER);
 
@@ -614,6 +615,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
             v->plr.server_hp += 20;
             if (v->plr.server_hp > 100) 
                 v->plr.server_hp = 100;
+			v->plr.hp_cheat_timer = 0; 
 			v->plr.heal_rings = 0;
 			v->plr.stats.hp_restored++;
 
@@ -1219,6 +1221,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			{
 				to_revive->plr.stats.rings = 0;
 				to_revive->plr.server_hp = 40;
+				to_revive->plr.hp_cheat_timer = 0;
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
 
@@ -1324,28 +1327,31 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					{
                         if (hp > v->plr.server_hp)
                         {
-                            // Можно добавить небольшую погрешность или сразу кикать
-                            char msg[64];
-                            snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
-                            server_disconnect(v->server, v->peer, DR_OTHER, msg);
-                            return true;
-                        }
-						v->plr.rings = rings;
-						v->plr.server_hp = hp;
-						if (revival < 2)
-						{
-							if (rings < 0 || (v->server->game.map != 20 && rings >= 120) && g_config.states.gameplay.anticheat.data_based_anticheat)
-							{
-								server_disconnect(v->server, v->peer, DR_OTHER, "gomunkulus");
-								return true;
-							}
+                            // Мы НЕ верим клиенту. server_hp НЕ обновляется.
+                            
+                            // Увеличиваем счетчик "подозрения" (таймер тиков/пакетов)
+                            v->plr.hp_cheat_timer++;
 
-							if (hp > 100 && g_config.states.gameplay.anticheat.data_based_anticheat)
-							{
-								server_disconnect(v->server, v->peer, DR_OTHER, "garic forn — Сьогодні о 04:31");
-								return true;
-							}
-						}
+                            // Если несоответствие длится больше ~60 пакетов (около 1-2 секунд лагов)
+                            // Значит пакет лечения так и не пришел, а HP все еще высокое -> ЧИТ.
+                            if (v->plr.hp_cheat_timer > 60)
+                            {
+                                char msg[64];
+                                snprintf(msg, 64, "HP Cheat Detected (S:%d C:%d)", v->plr.server_hp, hp);
+                                server_disconnect(v->server, v->peer, DR_OTHER, msg);
+                                return true;
+                            }
+
+                            // Если таймер маленький (просто лаг пакета HEAL), мы игнорируем это 'hp'
+                            // и ждем, пока придет пакет HEAL, который поднимет server_hp.
+                        }
+                        // 2. Клиент заявляет HP меньше или равно (получил урон)
+                        else
+                        {
+                            // Это валидно. Игрок имеет право умирать.
+                            v->plr.server_hp = hp;
+                            v->plr.hp_cheat_timer = 0; // Сбрасываем подозрения
+                        }
 					}
 				}
 
