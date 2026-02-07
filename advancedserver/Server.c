@@ -45,6 +45,7 @@
 
 // -----------------------------
 
+
 typedef struct {
     int port;
     int players;
@@ -101,10 +102,23 @@ void report_status_to_master(Server* server) // Изменили сигнату�
     // Время
     int time_rem = 0;
     if (server->state == ST_GAME && server->game.started) {
-        time_rem = server->game.time_sec - (int)(server->game.elapsed / 60); // Примерный расчет
+        // ИСПРАВЛЕНИЕ:
+        // server->game.time_sec уже содержит актуальное оставшееся время (если таймер включен).
+        // Не нужно вычитать elapsed, так как time_sec уже декрементируется в Game.c.
+        
+        if (g_config.states.gameplay.banana.disable_timer) {
+            // Если таймер отключен (режим banana), time_sec идет вверх, 
+            // поэтому считаем остаток до Sudden Death
+            time_rem = g_config.states.gameplay.sudden_death_timer - server->game.time_sec;
+        } else {
+            // Обычный режим: просто берем текущее значение таймера
+            time_rem = server->game.time_sec;
+        }
+
         if (time_rem < 0) time_rem = 0;
     }
     cJSON_AddNumberToObject(root, "time_remaining", time_rem);
+
 
     // МАССИВ ИГРОКОВ
     cJSON* players_arr = cJSON_CreateArray();
@@ -848,7 +862,7 @@ bool server_worker(Server* server)
                 // server->delta обычно 1, если мы в цикле fixed update.
                 // TICKSPERSEC = 60. 2000ms = 2 сек. 
                 // Здесь time_end возвращает миллисекунды (обычно), так что:
-                api_report_timer += (1000.0 / 60.0); // Прибавляем время кадра ~16.6ms
+                api_report_timer += (1000.0 / (double)TICKSPERSEC); // Прибавляем время кадра ~16.6ms
 			}
 			MutexUnlock(server->state_lock);
 			server->delta = 1;
