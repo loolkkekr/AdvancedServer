@@ -153,9 +153,10 @@ bool game_init(int exe, int8_t map, Server* server)
 
 		memset(&v->plr, 0, sizeof(Player));
 		
-		// Инициализация серверного HP и таймера
+		// Инициализация серверного HP и таймеров
 		v->plr.server_hp = 100;
 		v->plr.hp_grace = 0.0;
+        time_start(&v->plr.last_valid_hp); // Ставим метку времени "всё хорошо"
 
 		if (v->id == server->game.exe)
 			SET_FLAG(v->plr.flags, PLAYER_KILLER);
@@ -602,10 +603,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				return true;
 			}
 
-			v->plr.server_hp += 40;
-			if (v->plr.server_hp > 100) 
-				v->plr.server_hp = 100;
-			v->plr.hp_grace = 1.5 * TICKSPERSEC;
 			if (v->plr.mod_tool)
 			{
 				Packet pack;
@@ -619,9 +616,13 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			}
 
 			// --- Server-side Health Update ---
+			v->plr.server_hp += 20;
+			if (v->plr.server_hp > 100) 
+				v->plr.server_hp = 100;
 			
-			// Устанавливаем таймер "неуязвимости" для обновления HP от клиента на 1.5 сек,
-			// чтобы игнорировать старые пакеты, пришедшие из-за лагов.
+			// Защита от старых пакетов (Packet Reordering)
+            // Игнорируем заниженное HP от клиента на 1.5 сек
+			v->plr.hp_grace = 1.5 * TICKSPERSEC;
 			// ---------------------------------
 
 			v->plr.heal_rings = 0;
@@ -1140,7 +1141,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 							v->plr.death_timer_sec = g_config.states.gameplay.respawn_time;
 						}
 
-					}
+
 					PacketCreate(&pack, SERVER_GAME_DEATHTIMER_TICK);
                     PacketWrite(&pack, packet_write8, exe && vector2_dist(&v->plr.pos, &exe->plr.pos) <= 240 && g_config.states.gameplay.exe_camp_penalty);
 					PacketWrite(&pack, packet_write16, v->id);
@@ -1225,11 +1226,12 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			else
 			{
 				to_revive->plr.stats.rings = 0;
-				to_revive->plr.server_hp = 40;
+
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
 
 				// --- Обновление HP при возрождении ---
+				to_revive->plr.server_hp = 40;
 				// Даем 2 секунды иммунитета от обновлений HP клиентом (защита от race condition)
 				to_revive->plr.hp_grace = 2.0 * TICKSPERSEC;
 				// -------------------------------------
@@ -1335,33 +1337,44 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					if (v->server->game.exe != v->id)
 					{
 						v->plr.rings = rings;
-						// --- ANTI-CHEAT HP VALIDATION ---
-                        // Если HP от клиента больше серверного - кик.
-                        if (v->plr.hp_grace <= 0)
+
+						// --- ANTI-CHEAT HP VALIDATION (REORDERING FIX) ---
+                        // Если HP от клиента больше серверного...
+						if (hp > v->plr.server_hp)
+						{
+                            // Если это превышение длится дольше 2 секунд (2000 мс) - кикаем.
+                            // Это значит, что пакет PLAYER_HEAL так и не пришел.
+                            if (time_end(&v->plr.last_valid_hp) > 2000.0)
+                            {
+                                char msg[64];
+                                snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
+                                server_disconnect(v->server, v->peer, DR_OTHER, msg);
+                                return true;
+                            }
+                            
+                            // Если меньше 2 сек - временно игнорируем (ждем пакет лечения)
+						}
+                        else
                         {
-							if (hp > v->plr.server_hp)
-							{
-								char msg[64];
-								snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
-								server_disconnect(v->server, v->peer, DR_OTHER, msg);
-								return true;
-							}
-                            // Доп. защита от нулевого HP, если игрок не мертв
-                            if (hp == 0 && !(v->plr.flags & PLAYER_DEAD))
+                            // HP в норме (или получили урон). Сбрасываем таймер "подозрения".
+                            time_start(&v->plr.last_valid_hp);
+
+                            // Обработка урона (понижение HP)
+                            // Если действует hp_grace (защита от лагов при лечении), мы игнорируем понижение.
+                            if (v->plr.hp_grace <= 0)
                             {
-                                // Игнорируем подозрительный 0
+                                // Игнорируем подозрительный 0, если игрок не мертв
+                                if (hp == 0 && !(v->plr.flags & PLAYER_DEAD))
+                                {
+                                    // Лаг пакета при респавне, игнорируем
+                                }
+                                else if (hp < v->plr.server_hp)
+                                {
+                                    v->plr.server_hp = hp;
+                                }
                             }
-                            else if (hp < v->plr.server_hp)
-                            {
-                                v->plr.server_hp = hp;
-                            }
-							v->plr.hp_grace = 2;
                         }
-                        
-                        // Если HP меньше (урон), обновляем серверное значение.
-                        // НО! Если действует hp_grace, мы игнорируем понижение HP
-                        // (это значит, что клиент еще не знает, что сервер его вылечил/воскресил)
-                        // ---------------------------------
+                        // ------------------------------------------------
 
 						if (revival < 2)
 						{
@@ -1610,7 +1623,7 @@ bool game_player_tick(Server* server)
                 data->plr.cooldown = 0;
         }
 
-        // Обновление таймера "милости" для HP (anti-cheat lag compensation)
+        // Обновление таймера "милости" для HP (drop protection)
         if (data->plr.hp_grace > 0)
             data->plr.hp_grace -= server->delta;
 
@@ -1833,11 +1846,11 @@ bool game_player_tick(Server* server)
 					}
 				}
 
-				PacketCreate(&packet, SERVER_GAME_DEATHTIMER_TICK);
-				PacketWrite(&packet, packet_write8, exe_near);
-				PacketWrite(&packet, packet_write16, data->id);
-				PacketWrite(&packet, packet_write8, data->plr.death_timer_sec);
-				server_broadcast(server, &packet, true);
+				PacketCreate(&pack, SERVER_GAME_DEATHTIMER_TICK);
+				PacketWrite(&pack, packet_write8, exe_near);
+				PacketWrite(&pack, packet_write16, data->id);
+				PacketWrite(&pack, packet_write8, data->plr.death_timer_sec);
+				server_broadcast(server, &pack, true);
 
 				data->plr.death_timer = 0;
 			}
@@ -1903,7 +1916,7 @@ bool game_state_tick(Server* server)
 		}
 
 		Packet packet;
-		PacketCreate(&packet, SERVER_GAME_TIME_SYNC);
+		PacketCreate(&pack, SERVER_GAME_TIME_SYNC);
 		PacketWrite(&packet, packet_write16, (uint16_t)server->game.time_sec * TICKSPERSEC);
 		server_broadcast(server, &packet, true);
 
