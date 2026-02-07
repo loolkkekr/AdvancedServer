@@ -1335,7 +1335,8 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					if (v->server->game.exe != v->id)
 					{
 						v->plr.rings = rings;
-
+						snprintf(msg, 64, "(%d > %d)", hp, v->plr.server_hp);
+						Info(LOG_YLW msg);
 						// --- ANTI-CHEAT HP VALIDATION ---
                         // Если HP от клиента больше серверного - кик.
                         if (v->plr.hp_grace <= 0)
