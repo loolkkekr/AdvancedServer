@@ -1355,7 +1355,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                             {
                                 v->plr.server_hp = hp;
                             }
-							v->plr.hp_grace = 2
+							v->plr.hp_grace = 2;
                         }
                         
                         // Если HP меньше (урон), обновляем серверное значение.
