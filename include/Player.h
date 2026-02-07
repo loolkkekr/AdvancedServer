@@ -58,9 +58,6 @@ typedef struct
 	/* Anti-cheat HP */
 
 	int8_t min_hp;
-	int8_t      server_hp; 
-	double      hp_grace;
-	uint16_t    hp_over_time;
 	int8_t expected_hp;
 	int16_t heal_rings_collected;
 

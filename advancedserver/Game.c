@@ -153,16 +153,13 @@ bool game_init(int exe, int8_t map, Server* server)
 
 		memset(&v->plr, 0, sizeof(Player));
 		
-		// Инициализация серверного HP и таймера
-		v->plr.server_hp = 100;
-		v->plr.hp_grace = 0.0;
-		v->plr.hp_over_time = 0;
-
 		if (v->id == server->game.exe)
 			SET_FLAG(v->plr.flags, PLAYER_KILLER);
 
 		v->plr.ready = false;
 		v->plr.mod_tool = v->mod_tool;
+		v->plr.expected_hp = (v->id == server->game.exe) ? 10000 : 100;
+		v->plr.heal_rings_collected = 0;
         if(g_config.states.gameplay.anticheat.ability_anticheat)
             time_start(&v->plr.tails_last_proj);
 
@@ -442,7 +439,7 @@ bool game_demonize(Server* server, PeerData* data)
 	{
 		DEL_FLAG(data->plr.flags, PLAYER_DEAD);
 		SET_FLAG(data->plr.flags, PLAYER_DEMONIZED);
-		
+		data->plr.expected_hp = 10000;
 		data->plr.stats.rings = 0;
 
 		// reset cooldown
@@ -580,9 +577,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
 				return true;
 			}
-			v->plr.server_hp += 20; // Добавляем 20 ХП (или сколько у вас настроено в клиенте)
-			if (v->plr.server_hp > 100) 
-				v->plr.server_hp = 100;
+
 			server_broadcast_ex(v->server, packet, true, v->id);
 			break;
 		}
@@ -605,10 +600,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				return true;
 			}
 
-			v->plr.server_hp += 20;
-			if (v->plr.server_hp > 100) 
-				v->plr.server_hp = 100;
-			v->plr.hp_grace = 1.5 * TICKSPERSEC;
 			if (v->plr.mod_tool)
 			{
 				Packet pack;
@@ -620,12 +611,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				RAssert(packet_send(v->peer, &pack, true));
 				break;
 			}
-
-			// --- Server-side Health Update ---
-			
-			// Устанавливаем таймер "неуязвимости" для обновления HP от клиента на 1.5 сек,
-			// чтобы игнорировать старые пакеты, пришедшие из-за лагов.
-			// ---------------------------------
 
 			v->plr.heal_rings = 0;
 			v->plr.stats.hp_restored++;
@@ -785,33 +770,27 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_RING_COLLECTED:
-		{
+		case CLIENT_RING_COLLECTED: {
 			AssertOrDisconnect(v->server, v->in_game);
 			PacketRead(id, packet, packet_read8, uint8_t);
 			PacketRead(eid, packet, packet_read16, uint16_t);
-
 			Ring* ent = NULL;
 			bool res = game_despawn(v->server, (Entity**)&ent, eid);
-			if (res)
-			{
+			if (res) {
 				PeerData* data = server_find_peer(v->server, v->id);
 				RAssert(data);
-
-				if (!ent->red)
-				{
+				if (!ent->red) {
 					time_start(&data->plr.last_rings);
 					data->plr.rings++;
 					data->plr.stats.rings++;
+					data->plr.heal_rings_collected++; // Увеличиваем счетчик для восстановления
 				}
-
 				Packet pack;
 				PacketCreate(&pack, SERVER_RING_COLLECTED);
 				PacketWrite(&pack, packet_write8, id);
 				PacketWrite(&pack, packet_write16, eid);
 				PacketWrite(&pack, packet_write8, ent->red);
 				PacketWrite(&pack, packet_write8, data->plr.rings > 0);
-
 				free(ent);
 				RAssert(packet_send(v->peer, &pack, true));
 			}
@@ -1125,6 +1104,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 					break;
 
 				SET_FLAG(v->plr.flags, PLAYER_DEAD);
+				v->plr.expected_hp = 0;
                 if (v->plr.flags & PLAYER_REVIVED || (v->server->game.time_sec < g_config.states.gameplay.sudden_death_timer) == !g_config.states.gameplay.banana.disable_timer)
 				{
 					RAssert(game_demonize(v->server, v));
@@ -1142,8 +1122,11 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						} else {
 							v->plr.death_timer_sec = g_config.states.gameplay.respawn_time;
 						}
-
+					} else {
+						v->plr.death_timer_sec = g_config.states.gameplay.respawn_time;
 					}
+
+
 					PacketCreate(&pack, SERVER_GAME_DEATHTIMER_TICK);
                     PacketWrite(&pack, packet_write8, exe && vector2_dist(&v->plr.pos, &exe->plr.pos) <= 240 && g_config.states.gameplay.exe_camp_penalty);
 					PacketWrite(&pack, packet_write16, v->id);
@@ -1228,15 +1211,10 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			else
 			{
 				to_revive->plr.stats.rings = 0;
-				to_revive->plr.server_hp = 40;
+
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
-
-				// --- Обновление HP при возрождении ---
-				// Даем 2 секунды иммунитета от обновлений HP клиентом (защита от race condition)
-				to_revive->plr.hp_grace = 2.0 * TICKSPERSEC;
-				// -------------------------------------
-
+				to_revive->plr.expected_hp = 40;
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
 				PacketWrite(&pack, packet_write16, to_revive->id);
@@ -1333,86 +1311,53 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				PacketRead(rings, packet, packet_read16, int16_t);
 				PacketRead(flags, packet, packet_read8, uint8_t);
 
-				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED))
-				{
-					if (v->server->game.exe != v->id)
-					{
+				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED)) {
+					if (v->server->game.exe != v->id) {
 						v->plr.rings = rings;
-						// --- ANTI-CHEAT HP VALIDATION ---
-                        // Если HP от клиента больше серверного - кик.
-                        int diff = hp - v->plr.server_hp;
-
-                        if (diff > 0)
-                        {
-                            // Клиент прислал HP больше, чем знает сервер.
-                            // Это может быть лаг пакета лечения (Data пришел раньше Heal).
-                            
-                            // Разрешаем превышение на 25 (для колец) или 45 (если игрок был мертв/возрождается)
-                            int allowed_diff = (v->plr.flags & PLAYER_DEAD) ? 45 : 25;
-
-                            if (diff <= allowed_diff)
-                            {
-                                // Увеличиваем счетчик "подозрительности"
-                                v->plr.hp_over_time++;
-
-                                // Если игрок удерживает завышенное HP дольше ~2 секунд (примерно 80-100 пакетов)
-                                if (v->plr.hp_over_time > 100)
-                                {
-                                    char msg[64];
-                                    snprintf(msg, 64, "Fake Health detected (No source found for +%d HP)", diff);
-                                    server_disconnect(v->server, v->peer, DR_OTHER, msg);
-                                    return true;
-                                }
-
-                                // ВАЖНО: Мы принимаем этот пакет для передвижения, НО НЕ обновляем v->plr.server_hp.
-                                // Мы ждем, пока придет пакет CLIENT_PLAYER_HEAL и официально поднимет server_hp.
-                            }
-                            else
-                            {
-                                // Разница слишком большая (сразу накрутил 100 хп) -> Моментальный кик
-                                char msg[64];
-                                snprintf(msg, 64, "Health manipulation detected (%d > %d)", hp, v->plr.server_hp);
-                                server_disconnect(v->server, v->peer, DR_OTHER, msg);
-                                return true;
-                            }
-                        }
-                        else
-                        {
-                            // HP в норме (равно или меньше серверного)
-                            // Сбрасываем счетчик подозрительности, так как рассинхрон исчез
-                            v->plr.hp_over_time = 0;
-
-                            // Обработка получения урона (как и раньше)
-                            if (v->plr.hp_grace <= 0)
-                            {
-                                if (hp == 0 && !(v->plr.flags & PLAYER_DEAD))
-                                {
-                                    // Игнор лага с 0 хп
-                                }
-                                else if (hp < v->plr.server_hp)
-                                {
-                                    v->plr.server_hp = hp;
-                                }
-                            }
-                        }
-                        
-                        // Если HP меньше (урон), обновляем серверное значение.
-                        // НО! Если действует hp_grace, мы игнорируем понижение HP
-                        // (это значит, что клиент еще не знает, что сервер его вылечил/воскресил)
-                        // ---------------------------------
-
-						if (revival < 2)
-						{
-							if (rings < 0 || (v->server->game.map != 20 && rings >= 120) && g_config.states.gameplay.anticheat.data_based_anticheat)
-							{
-								server_disconnect(v->server, v->peer, DR_OTHER, "gomunkulus");
+						if (revival < 2) {
+							// Проверка на минимальное/максимальное количество колец
+							if (g_config.states.gameplay.anticheat.data_based_anticheat && rings < 10) {
+								server_disconnect(v->server, v->peer, DR_OTHER, "pusy");
 								return true;
 							}
-
-							if (hp > 100 && g_config.states.gameplay.anticheat.data_based_anticheat)
-							{
-								server_disconnect(v->server, v->peer, DR_OTHER, "garic forn — Сьогодні о 04:31");
+							if (g_config.states.gameplay.anticheat.data_based_anticheat && rings >= 140 && v->server->game.map != 20) {
+								server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
 								return true;
+							}
+							
+							// === НОВАЯ ПРОВЕРКА HP ===
+							if (g_config.states.gameplay.anticheat.data_based_anticheat) {
+								int8_t max_hp_limit = 100;
+								if (v->plr.flags & PLAYER_DEMONIZED) max_hp_limit = 666; // или другое значение для демонов
+								
+								// Проверка абсолютного максимума
+								if (hp > max_hp_limit) {
+									server_disconnect(v->server, v->peer, DR_OTHER, "hp overflow");
+									return true;
+								}
+								
+								// Если HP выросло - проверяем, хватило ли колец
+								if (hp > v->plr.expected_hp) {
+									int diff = hp - v->plr.expected_hp;
+									// Каждые 20 HP требуют 10 колец
+									int groups_20 = (diff + 19) / 20; // округление вверх
+									int needed_rings = groups_20 * 10;
+									
+									if (v->plr.heal_rings_collected < needed_rings) {
+										server_disconnect(v->server, v->peer, DR_OTHER, "hp heal cheat");
+										return true;
+									}
+									
+									// Вычитаем использованные кольца (целые группы по 20)
+									v->plr.heal_rings_collected -= (diff / 20) * 10;
+									if (v->plr.heal_rings_collected < 0) v->plr.heal_rings_collected = 0;
+									v->plr.expected_hp = hp;
+								} 
+								else if (hp < v->plr.expected_hp) {
+									// Получен урон - обновляем ожидаемое HP
+									v->plr.expected_hp = hp;
+								}
+								// Если равно - ничего не делаем
 							}
 						}
 					}
@@ -1647,10 +1592,6 @@ bool game_player_tick(Server* server)
             else
                 data->plr.cooldown = 0;
         }
-
-        // Обновление таймера "милости" для HP (anti-cheat lag compensation)
-        if (data->plr.hp_grace > 0)
-            data->plr.hp_grace -= server->delta;
 
 		// ping check
 		if (server->delta < 2.5)
