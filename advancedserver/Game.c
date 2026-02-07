@@ -1140,7 +1140,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 							v->plr.death_timer_sec = g_config.states.gameplay.respawn_time;
 						}
 
-
+					}
 					PacketCreate(&pack, SERVER_GAME_DEATHTIMER_TICK);
                     PacketWrite(&pack, packet_write8, exe && vector2_dist(&v->plr.pos, &exe->plr.pos) <= 240 && g_config.states.gameplay.exe_camp_penalty);
 					PacketWrite(&pack, packet_write16, v->id);
