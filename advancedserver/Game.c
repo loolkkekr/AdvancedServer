@@ -1345,23 +1345,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 									v->plr.min_hp = hp;
 								}
 								
-<<<<<<< Updated upstream
-								// Допустимое отклонение: +25 (одно лечение) + 5 (погрешность)
-								// Потому что игрок мог собрать 10 колец, но еще не активировать хил
-								int max_allowed = v->plr.expected_hp + 25 + 5;
-								if (max_allowed > 100) max_allowed = 100;
-								
-								// Также учитываем текущие кольца: каждые 10 = потенциальный +25 HP
-								int potential_heal = (v->plr.heal_rings_collected / 10) * 25;
-								max_allowed += potential_heal;
-								if (max_allowed > 100) max_allowed = 100;
-								
-								if (hp > max_allowed)
-=======
 								// Проверяем, не восстановил ли игрок HP больше, чем должно быть возможно
 								// Допустимый порог: +5 HP (для учета лагов/пинга при легитимном хиле)
 								if (hp > v->plr.min_hp + 5)
->>>>>>> Stashed changes
 								{
 									char msg[256];
 									snprintf(msg, 256, "Code error: 5", v->plr.min_hp, hp);
