@@ -1331,10 +1331,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 									server_disconnect(v->server, v->peer, DR_OTHER, "hp overflow");
 									return true;
 								}
-								else if (hp < v->plr.expected_hp) {
-									v->plr.expected_hp = hp;
-									v->plr.heal_rings_collected = 0;
-								}
 								
 								// Если HP выросло - проверяем, хватило ли колец
 								if (hp > v->plr.expected_hp) {
@@ -1356,6 +1352,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 								else if (hp < v->plr.expected_hp) {
 									// Получен урон - обновляем ожидаемое HP
 									v->plr.expected_hp = hp;
+									v->plr.heal_rings_collected = 0;
 								}
 								// Если равно - ничего не делаем
 							}
