@@ -948,21 +948,30 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_BRING_COLLECTED:
-		{
+		case CLIENT_BRING_COLLECTED: {
 			AssertOrDisconnect(v->server, v->in_game);
 			AssertOrDisconnect(v->server, v->id != v->server->game.exe);
 			PacketRead(eid, packet, packet_read16, uint16_t);
-
-			if (game_despawn(v->server, NULL, eid))
-			{
+			if (game_despawn(v->server, NULL, eid)) {
+				// Fix: синхронизируем кольца с учётом защиты от чёрного кольца
+				// Если >= 5 колец — отбираем 5, иначе отбираем все (0)
+				if (v->plr.rings >= 5) {
+					v->plr.rings -= 5;
+					v->plr.heal_rings_collected -= 5;
+					if (v->plr.heal_rings_collected < 0) v->plr.heal_rings_collected = 0;
+				} else {
+					// Поглощаем оставшиеся кольца для защиты от ХП-урона
+					v->plr.heal_rings_collected -= v->plr.rings;
+					if (v->plr.heal_rings_collected < 0) v->plr.heal_rings_collected = 0;
+					v->plr.rings = 0;
+				}
+				
 				Packet pack;
 				PacketCreate(&pack, SERVER_BRING_COLLECTED);
 				packet_send(v->peer, &pack, true);
 			}
 			break;
 		}
-
 		case CLIENT_ERECTOR_BALLS:
 		{
 			AssertOrDisconnect(v->server, v->in_game);
