@@ -1206,11 +1206,11 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				}
 			} else {
 				to_revive->plr.stats.rings = 0;
-				to_revive->plr.rings = 0; // <-- Сбрасываем кольца у воскрешенного
+				to_revive->plr.rings = 0;
 				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
 				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
 				to_revive->plr.expected_hp = 40;
-				to_revive->plr.heal_rings_collected = 20; // 40 HP = 20 колец для хила
+				to_revive->plr.heal_rings_collected = 20;
 				
 				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
 				PacketWrite(&pack, packet_write8, 0);
