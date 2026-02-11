@@ -1147,96 +1147,96 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 		}
 
 		case CLIENT_REVIVAL_PROGRESS: {
-			if (v->server->game.end > 0) break;
-			PacketRead(pid, packet, packet_read16, uint16_t);
-			PacketRead(rings, packet, packet_read8, uint8_t);
-			PeerData* to_revive = server_find_peer(v->server, pid);
-			AssertOrDisconnect(v->server, to_revive);
-			if (!to_revive || !(to_revive->plr.flags & PLAYER_DEAD)) break;
-			
-			// Уменьшаем кольца у текущего возрождающего (инициатора)
-			if (rings > 0) {
-				if (v->plr.heal_rings_collected >= rings) {
-					v->plr.heal_rings_collected -= rings;
-				} else {
-					v->plr.heal_rings_collected = 0;
-				}
-				// Критически важно: уменьшить rings, чтобы античит не кикнул за "ring hack"
-				if (v->plr.rings >= rings) {
-					v->plr.rings -= rings;
-				} else {
-					v->plr.rings = 0;
-				}
-			}
-			
-			Packet pack;
-			if (to_revive->plr.flags & PLAYER_CANTREVIVE) {
-				to_revive->plr.death_timer_sec = 0;
-				to_revive->plr.death_timer = 0;
-				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
-				PacketWrite(&pack, packet_write8, 0);
-				PacketWrite(&pack, packet_write16, to_revive->id);
-				server_broadcast(v->server, &pack, true);
-				break;
-			}
-			if (to_revive->plr.revival <= 0) {
-				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
-				PacketWrite(&pack, packet_write8, 1);
-				PacketWrite(&pack, packet_write16, to_revive->id);
-				server_broadcast(v->server, &pack, true);
-			}
-			to_revive->plr.revival += 0.015 + (0.004 * rings);
-			if (to_revive->plr.revival < 1) {
-				PacketCreate(&pack, SERVER_REVIVAL_PROGRESS);
-				PacketWrite(&pack, packet_write16, to_revive->id);
-				PacketWrite(&pack, packet_writedouble, to_revive->plr.revival);
-				server_broadcast(v->server, &pack, false);
-				// add itself to the list
-				{
-					bool has = false;
-					int ind = 0;
-					for (int i = 0; i < 5; i++) {
-						if (to_revive->plr.revival_init[i] == -1) {
-							ind = i;
-							break;
-						}
-						if (to_revive->plr.revival_init[i] == v->id) has = true;
-					}
-					if (!has) to_revive->plr.revival_init[ind] = v->id;
-				}
-			} else {
-				to_revive->plr.stats.rings = 0;
-				to_revive->plr.rings = 0; // <-- Сбрасываем кольца у воскрешенного
-				SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
-				DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
-				to_revive->plr.expected_hp = 40;
-				to_revive->plr.heal_rings_collected = 20; // 40 HP = 20 колец для хила
-				
-				PacketCreate(&pack, SERVER_REVIVAL_STATUS);
-				PacketWrite(&pack, packet_write8, 0);
-				PacketWrite(&pack, packet_write16, to_revive->id);
-				server_broadcast(v->server, &pack, true);
-				
-				PacketCreate(&pack, SERVER_REVIVAL_REVIVED);
-				packet_send(to_revive->peer, &pack, true);
-				
-				for (int i = 0; i < 5; i++) {
-					if (to_revive->plr.revival_init[i] == -1) break;
-					PeerData* data = server_find_peer(v->server, to_revive->plr.revival_init[i]);
-					if(!data) continue;
-					
-					// Сбрасываем кольца у помощников, чтобы не было кика за "ring hack"
-					data->plr.heal_rings_collected = 0;
-					data->plr.rings = 0; // <-- И здесь тоже сбрасываем
-					
-					PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
-					packet_send(data->peer, &pack, true);
-					Debug("Removed rings from %d", to_revive->plr.revival_init[i]);
-				}
-				Info("%s " LOG_RST "(id %d)" LOG_GRN " was revived!", to_revive->nickname.value, to_revive->id);
-			}
-			break;
-		}
+            if (v->server->game.end > 0) break;
+            PacketRead(pid, packet, packet_read16, uint16_t);
+            PacketRead(rings, packet, packet_read8, uint8_t);
+            PeerData* to_revive = server_find_peer(v->server, pid);
+            AssertOrDisconnect(v->server, to_revive);
+            if (!to_revive || !(to_revive->plr.flags & PLAYER_DEAD)) break;
+            
+            // Уменьшаем кольца у текущего возрождающего (инициатора)
+            if (rings > 0) {
+                // Уменьшаем фактическое количество колец
+                if (v->plr.rings >= rings) {
+                    v->plr.rings -= rings;
+                } else {
+                    v->plr.rings = 0;
+                }
+                
+                // ВАЖНО: Не вычитаем из heal_rings_collected здесь!
+                // Это вызывает ложный античит в CLIENT_PLAYER_DATA, 
+                // так как сервер думает, что кольца потрачены, и не может "оплатить" рост HP, 
+                // если пакеты приходят в разном порядке.
+                // Античит "rings cheat" (v->plr.rings > v->plr.heal_rings_collected) 
+                // всё равно сработает, если читер попытается накрутить кольца.
+            }
+            
+            Packet pack;
+            if (to_revive->plr.flags & PLAYER_CANTREVIVE) {
+                to_revive->plr.death_timer_sec = 0;
+                to_revive->plr.death_timer = 0;
+                PacketCreate(&pack, SERVER_REVIVAL_STATUS);
+                PacketWrite(&pack, packet_write8, 0);
+                PacketWrite(&pack, packet_write16, to_revive->id);
+                server_broadcast(v->server, &pack, true);
+                break;
+            }
+            if (to_revive->plr.revival <= 0) {
+                PacketCreate(&pack, SERVER_REVIVAL_STATUS);
+                PacketWrite(&pack, packet_write8, 1);
+                PacketWrite(&pack, packet_write16, to_revive->id);
+                server_broadcast(v->server, &pack, true);
+            }
+            to_revive->plr.revival += 0.015 + (0.004 * rings);
+            if (to_revive->plr.revival < 1) {
+                PacketCreate(&pack, SERVER_REVIVAL_PROGRESS);
+                PacketWrite(&pack, packet_write16, to_revive->id);
+                PacketWrite(&pack, packet_writedouble, to_revive->plr.revival);
+                server_broadcast(v->server, &pack, false);
+                // add itself to the list
+                {
+                    bool has = false;
+                    int ind = 0;
+                    for (int i = 0; i < 5; i++) {
+                        if (to_revive->plr.revival_init[i] == -1) {
+                            ind = i;
+                            break;
+                        }
+                        if (to_revive->plr.revival_init[i] == v->id) has = true;
+                    }
+                    if (!has) to_revive->plr.revival_init[ind] = v->id;
+                }
+            } else {
+                to_revive->plr.stats.rings = 0;
+                to_revive->plr.rings = 0;
+                to_revive->plr.expected_hp = 40;
+                // При воскрешении даем игроку "кредит" на исцеление, чтобы античит не сработал
+                // на первом же пакете обновления HP (так как клиент может мгновенно исцелиться)
+                to_revive->plr.heal_rings_collected = 20; 
+                SET_FLAG(to_revive->plr.flags, PLAYER_REVIVED);
+                DEL_FLAG(to_revive->plr.flags, PLAYER_DEAD);
+                
+                PacketCreate(&pack, SERVER_REVIVAL_STATUS);
+                PacketWrite(&pack, packet_write8, 0);
+                PacketWrite(&pack, packet_write16, to_revive->id);
+                server_broadcast(v->server, &pack, true);
+                
+                PacketCreate(&pack, SERVER_REVIVAL_REVIVED);
+                packet_send(to_revive->peer, &pack, true);
+                
+                for (int i = 0; i < 5; i++) {
+                    if (to_revive->plr.revival_init[i] == -1) break;
+                    PeerData* data = server_find_peer(v->server, to_revive->plr.revival_init[i]);
+                    if(!data) continue;
+                    // Здесь тоже не нужно вычитать heal_rings_collected, 
+                    // так как мы убрали это выше. Кольца уже вычтены.
+                    PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
+                    packet_send(data->peer, &pack, true);
+                }
+                Info("%s " LOG_RST "(id %d)" LOG_GRN " was revived!", to_revive->nickname.value, to_revive->id);
+            }
+            break;
+        }
 
 		case CLIENT_CHAT_MESSAGE:
 		{
@@ -1307,57 +1307,68 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED)) {
 					if (v->server->game.exe != v->id) {
+						// Логируем входящие данные
+						
 						v->plr.rings = rings;
-						if (v->plr.rings > v->plr.heal_rings_collected) {
+
+						if (v->plr.flags & PLAYER_REVIVED) {
+							Info("[AC-DATA] %s (ID:%d) | REVIVE FLAG SET - Syncing: expected_hp=%d, heal_rings=20", 
+								v->nickname.value, v->id, hp);
+							v->plr.heal_rings_collected = 20;
+							v->plr.expected_hp = hp;
+							DEL_FLAG(v->plr.flags, PLAYER_REVIVED);
+						} 
+						else if (v->plr.rings > v->plr.heal_rings_collected) {
+							Info("[AC-DATA] %s (ID:%d) | RINGS CHEAT: server_rings=%d > heal_rings_collected=%d", 
+								v->nickname.value, v->id, v->plr.rings, v->plr.heal_rings_collected);
 							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
 							return true;
 						}
+
 						if (revival < 2) {
-							// Проверка на минимальное/максимальное количество колец
 							if (g_config.states.gameplay.anticheat.data_based_anticheat && rings >= 140 && v->server->game.map != 20) {
 								server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
 								return true;
 							}
-							
-							// === НОВАЯ ПРОВЕРКА HP ===
+
 							if (g_config.states.gameplay.anticheat.data_based_anticheat) {
-								int8_t max_hp_limit = 100;
-								if (v->plr.flags & PLAYER_DEMONIZED) {
-									max_hp_limit = 10000;
-								}
+								int8_t max_hp_limit = (v->plr.flags & PLAYER_DEMONIZED) ? 10000 : 100;
 								
-								// Проверка абсолютного максимума
 								if (hp > max_hp_limit) {
+									Info("[AC-DATA] %s (ID:%d) | HP OVERFLOW: %d > %d", v->nickname.value, v->id, hp, max_hp_limit);
 									server_disconnect(v->server, v->peer, DR_OTHER, "hp overflow");
 									return true;
 								}
-								else if (hp < v->plr.expected_hp) {
-									v->plr.expected_hp = hp;
-									v->plr.heal_rings_collected = 0;
-								}
-								
-								// Если HP выросло - проверяем, хватило ли колец
+
+								// === ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ПРОВЕРКИ HP ===
 								if (hp > v->plr.expected_hp) {
 									int diff = hp - v->plr.expected_hp;
-									// Каждые 20 HP требуют 10 колец
-									int groups_20 = (diff + 19) / 20; // округление вверх
+									int groups_20 = (diff + 19) / 20;
 									int needed_rings = groups_20 * 10;
+									int rings_used = (diff / 20) * 10;
+									
+									Info("[AC-DATA] %s (ID:%d) | HEAL ATTEMPT: hp %d->%d (diff=%d) | Need %d rings (groups=%d) | Have %d", 
+										v->nickname.value, v->id, v->plr.expected_hp, hp, diff, needed_rings, groups_20, v->plr.heal_rings_collected);
 									
 									if (v->plr.heal_rings_collected < needed_rings) {
+										Info("[AC-DATA] %s (ID:%d) | HEAL CHEAT DETECTED: need %d, have %d | Diff=%d Expected was %d",
+											v->nickname.value, v->id, needed_rings, v->plr.heal_rings_collected, diff, v->plr.expected_hp);
 										server_disconnect(v->server, v->peer, DR_OTHER, "hp heal cheat");
 										return true;
 									}
 									
-									// Вычитаем использованные кольца (целые группы по 20)
-									v->plr.heal_rings_collected -= (diff / 20) * 10;
-									if (v->plr.heal_rings_collected < 0) v->plr.heal_rings_collected = 0;
+									// Успешное лечение
+									v->plr.heal_rings_collected -= rings_used;
 									v->plr.expected_hp = hp;
+									Info("[AC-DATA] %s (ID:%d) | HEAL SUCCESS: Used %d rings, remaining %d, new expected_hp=%d",
+										v->nickname.value, v->id, rings_used, v->plr.heal_rings_collected, v->plr.expected_hp);
 								} 
 								else if (hp < v->plr.expected_hp) {
-									// Получен урон - обновляем ожидаемое HP
+									Info("[AC-DATA] %s (ID:%d) | DAMAGE: hp %d->%d | Reset heal_rings (was %d)",
+										v->nickname.value, v->id, v->plr.expected_hp, hp, v->plr.heal_rings_collected);
 									v->plr.expected_hp = hp;
+									v->plr.heal_rings_collected = 0;
 								}
-								// Если равно - ничего не делаем
 							}
 						}
 					}
