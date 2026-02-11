@@ -1311,6 +1311,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						if (v->plr.flags & PLAYER_REVIVED) {
 							// Синхронизируем heal_rings_collected с клиентом после воскрешения
 							v->plr.heal_rings_collected = 0;
+							v->plr.expected_hp = hp;
 							DEL_FLAG(v->plr.flags, PLAYER_REVIVED);
 						} else if (v->plr.rings > v->plr.heal_rings_collected) {
 							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
