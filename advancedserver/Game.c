@@ -1307,59 +1307,68 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 
 				if(!(v->plr.flags & PLAYER_DEAD) && !(v->plr.flags & PLAYER_DEMONIZED)) {
 					if (v->server->game.exe != v->id) {
+						// Логируем входящие данные
+						
 						v->plr.rings = rings;
+
 						if (v->plr.flags & PLAYER_REVIVED) {
-							// Синхронизируем heal_rings_collected с клиентом после воскрешения
+							Info("[AC-DATA] %s (ID:%d) | REVIVE FLAG SET - Syncing: expected_hp=%d, heal_rings=20", 
+								v->nickname.value, v->id, hp);
 							v->plr.heal_rings_collected = 20;
 							v->plr.expected_hp = hp;
 							DEL_FLAG(v->plr.flags, PLAYER_REVIVED);
-						} else if (v->plr.rings > v->plr.heal_rings_collected) {
+						} 
+						else if (v->plr.rings > v->plr.heal_rings_collected) {
+							Info("[AC-DATA] %s (ID:%d) | RINGS CHEAT: server_rings=%d > heal_rings_collected=%d", 
+								v->nickname.value, v->id, v->plr.rings, v->plr.heal_rings_collected);
 							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
 							return true;
 						}
+
 						if (revival < 2) {
-							// Проверка на минимальное/максимальное количество колец
 							if (g_config.states.gameplay.anticheat.data_based_anticheat && rings >= 140 && v->server->game.map != 20) {
 								server_disconnect(v->server, v->peer, DR_OTHER, "dicus");
 								return true;
 							}
-							
-							// === НОВАЯ ПРОВЕРКА HP ===
+
 							if (g_config.states.gameplay.anticheat.data_based_anticheat) {
-								int8_t max_hp_limit = 100;
-								if (v->plr.flags & PLAYER_DEMONIZED) {
-									max_hp_limit = 10000;
-								}
+								int8_t max_hp_limit = (v->plr.flags & PLAYER_DEMONIZED) ? 10000 : 100;
 								
-								// Проверка абсолютного максимума
 								if (hp > max_hp_limit) {
+									Info("[AC-DATA] %s (ID:%d) | HP OVERFLOW: %d > %d", v->nickname.value, v->id, hp, max_hp_limit);
 									server_disconnect(v->server, v->peer, DR_OTHER, "hp overflow");
 									return true;
 								}
-								
-								// Если HP выросло - проверяем, хватило ли колец
+
+								// === ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ПРОВЕРКИ HP ===
 								if (hp > v->plr.expected_hp) {
 									int diff = hp - v->plr.expected_hp;
-									// Каждые 20 HP требуют 10 колец
-									int groups_20 = (diff + 19) / 20; // округление вверх
+									int groups_20 = (diff + 19) / 20;
 									int needed_rings = groups_20 * 10;
+									int rings_used = (diff / 20) * 10;
+									
+									Info("[AC-DATA] %s (ID:%d) | HEAL ATTEMPT: hp %d->%d (diff=%d) | Need %d rings (groups=%d) | Have %d", 
+										v->nickname.value, v->id, v->plr.expected_hp, hp, diff, needed_rings, groups_20, v->plr.heal_rings_collected);
 									
 									if (v->plr.heal_rings_collected < needed_rings) {
+										Info("[AC-DATA] %s (ID:%d) | HEAL CHEAT DETECTED: need %d, have %d | Diff=%d Expected was %d",
+											v->nickname.value, v->id, needed_rings, v->plr.heal_rings_collected, diff, v->plr.expected_hp);
 										server_disconnect(v->server, v->peer, DR_OTHER, "hp heal cheat");
 										return true;
 									}
 									
-									// Вычитаем использованные кольца (целые группы по 20)
-									v->plr.heal_rings_collected -= (diff / 20) * 10;
-									if (v->plr.heal_rings_collected < 0) v->plr.heal_rings_collected = 0;
+									// Успешное лечение
+									v->plr.heal_rings_collected -= rings_used;
 									v->plr.expected_hp = hp;
+									Info("[AC-DATA] %s (ID:%d) | HEAL SUCCESS: Used %d rings, remaining %d, new expected_hp=%d",
+										v->nickname.value, v->id, rings_used, v->plr.heal_rings_collected, v->plr.expected_hp);
 								} 
 								else if (hp < v->plr.expected_hp) {
-									// Получен урон - обновляем ожидаемое HP
+									Info("[AC-DATA] %s (ID:%d) | DAMAGE: hp %d->%d | Reset heal_rings (was %d)",
+										v->nickname.value, v->id, v->plr.expected_hp, hp, v->plr.heal_rings_collected);
 									v->plr.expected_hp = hp;
 									v->plr.heal_rings_collected = 0;
 								}
-								// Если равно - ничего не делаем
 							}
 						}
 					}
