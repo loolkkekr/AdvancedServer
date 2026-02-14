@@ -957,6 +957,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				SET_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
 				if (v->plr.rings >= 5) {
 					// Случай 1: Колец достаточно. Списываем 5 колец.
+					v->plr.rings -= 5;
 					v->plr.heal_rings_collected -= 5;
 				} else {
 					// Случай 2: Колец меньше 5. Кольца не трогаем.
@@ -1328,7 +1329,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						else if (v->plr.rings > v->plr.heal_rings_collected) {
 							Info("[AC-DATA] %s (ID:%d) | RINGS CHEAT: server_rings=%d > heal_rings_collected=%d", 
 								v->nickname.value, v->id, v->plr.rings, v->plr.heal_rings_collected);
-							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
+							if (v->plr.flags & PLAYER_BLACKRING_HIT) {
+								server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
+							}
 							return true;
 						}
 
