@@ -957,7 +957,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 				SET_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
 				if (v->plr.rings >= 5) {
 					// Случай 1: Колец достаточно. Списываем 5 колец.
-					v->plr.rings -= 5;
 					v->plr.heal_rings_collected -= 5;
 				} else {
 					// Случай 2: Колец меньше 5. Кольца не трогаем.
