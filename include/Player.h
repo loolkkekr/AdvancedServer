@@ -60,6 +60,7 @@ typedef struct
 	int8_t min_hp;
 	int8_t expected_hp;
 	int16_t heal_rings_collected;
+	double last_black_ring_hit;
 
 	struct
 	{

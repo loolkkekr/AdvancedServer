@@ -678,13 +678,16 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_PLAYER_HURT:
-		{
-			AssertOrDisconnect(v->server, v->in_game);
-			v->plr.heal_rings_collected = 0;
-			server_broadcast_ex(v->server, packet, true, v->id);
-			break;
-		}
+        case CLIENT_PLAYER_HURT: {
+            AssertOrDisconnect(v->server, v->in_game);
+            // Не сбрасываем heal_rings_collected, если урон от чёрного кольца 
+            // (в течение 0.2 секунд после сбора)
+            if (v->server->game.elapsed - v->plr.last_black_ring_hit > 0.2) {
+                v->plr.heal_rings_collected = 0;
+            }
+            server_broadcast_ex(v->server, packet, true, v->id);
+            break;
+        }
 
 		case CLIENT_TPROJECTILE_STARTCHARGE:
 		{
@@ -948,30 +951,33 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_BRING_COLLECTED: {
-			AssertOrDisconnect(v->server, v->in_game);
-			AssertOrDisconnect(v->server, v->id != v->server->game.exe);
-			PacketRead(eid, packet, packet_read16, uint16_t);
-			if (game_despawn(v->server, NULL, eid)) {
-				// Fix: синхронизируем кольца с учётом защиты от чёрного кольца
-				// Если >= 5 колец — отбираем 5, иначе отбираем все (0)
-				if (v->plr.rings >= 5) {
-					v->plr.rings -= 5;
-					v->plr.heal_rings_collected -= 5;
-					if (v->plr.heal_rings_collected < 0) v->plr.heal_rings_collected = 0;
-				} else {
-					// Поглощаем оставшиеся кольца для защиты от ХП-урона
-					v->plr.heal_rings_collected -= v->plr.rings;
-					if (v->plr.heal_rings_collected < 0) v->plr.heal_rings_collected = 0;
-					v->plr.rings = 0;
-				}
-				
-				Packet pack;
-				PacketCreate(&pack, SERVER_BRING_COLLECTED);
-				packet_send(v->peer, &pack, true);
-			}
-			break;
-		}
+        case CLIENT_BRING_COLLECTED: {
+            AssertOrDisconnect(v->server, v->in_game);
+            AssertOrDisconnect(v->server, v->id != v->server->game.exe);
+            PacketRead(eid, packet, packet_read16, uint16_t);
+            if (game_despawn(v->server, NULL, eid)) {
+                // Fix: синхронизируем кольца с учётом защиты от чёрного кольца
+                // Если >= 5 колец — отбираем 5, иначе отбираем все (0)
+                if (v->plr.rings >= 5) {
+                    v->plr.rings -= 5;
+                    v->plr.heal_rings_collected -= 5;
+                    if (v->plr.heal_rings_collected < 0)
+                        v->plr.heal_rings_collected = 0;
+                } else {
+                    // Поглощаем оставшиеся кольца, но НЕ трогаем heal_rings_collected
+                    // так как чёрное кольцо не отнимает кольца защиты при недостатке
+                    v->plr.rings = 0;
+                }
+                
+                // Запоминаем время сбора чёрного кольца
+                v->plr.last_black_ring_hit = v->server->game.elapsed;
+                
+                Packet pack;
+                PacketCreate(&pack, SERVER_BRING_COLLECTED);
+                packet_send(v->peer, &pack, true);
+            }
+            break;
+        }
 		case CLIENT_ERECTOR_BALLS:
 		{
 			AssertOrDisconnect(v->server, v->in_game);
@@ -1373,10 +1379,12 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 										v->nickname.value, v->id, rings_used, v->plr.heal_rings_collected, v->plr.expected_hp);
 								} 
 								else if (hp < v->plr.expected_hp) {
-									Info("[AC-DATA] %s (ID:%d) | DAMAGE: hp %d->%d | Reset heal_rings (was %d)",
-										v->nickname.value, v->id, v->plr.expected_hp, hp, v->plr.heal_rings_collected);
+									Info("[AC-DATA] %s (ID:%d) | DAMAGE: hp %d->%d | Reset heal_rings (was %d)", v->nickname.value, v->id, v->plr.expected_hp, hp, v->plr.heal_rings_collected);
 									v->plr.expected_hp = hp;
-									v->plr.heal_rings_collected = 0;
+									// Не сбрасываем heal_rings_collected при уроне от чёрного кольца
+									if (v->server->game.elapsed - v->plr.last_black_ring_hit > 0.2) {
+										v->plr.heal_rings_collected = 0;
+									}
 								}
 							}
 						}
