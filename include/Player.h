@@ -14,7 +14,8 @@ typedef enum
 	PLAYER_REVIVED = 0x1 << 3,
 	PLAYER_CANTREVIVE = 0x1 << 4,
 	PLAYER_LEFT = 0x1 << 5,
-	PLAYER_KILLER = 0x1 << 6
+	PLAYER_KILLER = 0x1 << 6,
+	PLAYER_BLACKRING_HIT = 0x1 << 7
 } PlayerFlags;
 
 typedef struct

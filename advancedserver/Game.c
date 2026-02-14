@@ -678,13 +678,14 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_PLAYER_HURT:
-		{
-			AssertOrDisconnect(v->server, v->in_game);
-			v->plr.heal_rings_collected = 0;
-			server_broadcast_ex(v->server, packet, true, v->id);
-			break;
-		}
+        case CLIENT_PLAYER_HURT: {
+            AssertOrDisconnect(v->server, v->in_game);
+            // Не сбрасываем heal_rings_collected, если урон от чёрного кольца 
+            // (в течение 0.2 секунд после сбора)
+            //v->plr.heal_rings_collected = 0;
+            server_broadcast_ex(v->server, packet, true, v->id);
+            break;
+        }
 
 		case CLIENT_TPROJECTILE_STARTCHARGE:
 		{
@@ -948,21 +949,24 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			break;
 		}
 
-		case CLIENT_BRING_COLLECTED:
-		{
+		case CLIENT_BRING_COLLECTED: {
 			AssertOrDisconnect(v->server, v->in_game);
 			AssertOrDisconnect(v->server, v->id != v->server->game.exe);
 			PacketRead(eid, packet, packet_read16, uint16_t);
-
-			if (game_despawn(v->server, NULL, eid))
-			{
+			if (game_despawn(v->server, NULL, eid)) {
+				SET_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
+				if (v->plr.rings >= 5) {
+					// Случай 1: Колец достаточно. Списываем 5 колец.
+					v->plr.rings -= 5;
+					//v->plr.heal_rings_collected -= 5;
+				}
+				
 				Packet pack;
 				PacketCreate(&pack, SERVER_BRING_COLLECTED);
 				packet_send(v->peer, &pack, true);
 			}
 			break;
 		}
-
 		case CLIENT_ERECTOR_BALLS:
 		{
 			AssertOrDisconnect(v->server, v->in_game);
@@ -1321,7 +1325,9 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						else if (v->plr.rings > v->plr.heal_rings_collected) {
 							Info("[AC-DATA] %s (ID:%d) | RINGS CHEAT: server_rings=%d > heal_rings_collected=%d", 
 								v->nickname.value, v->id, v->plr.rings, v->plr.heal_rings_collected);
-							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
+							if (v->plr.flags & PLAYER_BLACKRING_HIT) {
+								server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
+							}
 							return true;
 						}
 
@@ -1364,10 +1370,19 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 										v->nickname.value, v->id, rings_used, v->plr.heal_rings_collected, v->plr.expected_hp);
 								} 
 								else if (hp < v->plr.expected_hp) {
-									Info("[AC-DATA] %s (ID:%d) | DAMAGE: hp %d->%d | Reset heal_rings (was %d)",
-										v->nickname.value, v->id, v->plr.expected_hp, hp, v->plr.heal_rings_collected);
+									Info("[AC-DATA] %s (ID:%d) | DAMAGE: hp %d->%d", v->nickname.value, v->id, v->plr.expected_hp, hp);
+									
 									v->plr.expected_hp = hp;
-									v->plr.heal_rings_collected = 0;
+
+									// Если урон от чёрного кольца — НЕ сбрасываем heal_rings_collected
+									if (v->plr.flags & PLAYER_BLACKRING_HIT) {
+										Info("[AC-DATA] %s (ID:%d) | Black Ring damage IGNORED for heal_rings reset.", v->nickname.value, v->id);
+										DEL_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
+									} else {
+										// Обычный урон — сбрасываем
+										Info("[AC-DATA] %s (ID:%d) | Normal damage. Reset heal_rings (was %d)", v->nickname.value, v->id, v->plr.heal_rings_collected);
+										v->plr.heal_rings_collected = 0;
+									}
 								}
 							}
 						}
