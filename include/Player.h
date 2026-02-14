@@ -14,7 +14,8 @@ typedef enum
 	PLAYER_REVIVED = 0x1 << 3,
 	PLAYER_CANTREVIVE = 0x1 << 4,
 	PLAYER_LEFT = 0x1 << 5,
-	PLAYER_KILLER = 0x1 << 6
+	PLAYER_KILLER = 0x1 << 6,
+	PLAYER_BLACKRING_HTI = 0x1 << 7
 } PlayerFlags;
 
 typedef struct
@@ -60,7 +61,6 @@ typedef struct
 	int8_t min_hp;
 	int8_t expected_hp;
 	int16_t heal_rings_collected;
-	double last_black_ring_hit;
 
 	struct
 	{
