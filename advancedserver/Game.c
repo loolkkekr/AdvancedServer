@@ -1380,6 +1380,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 								} 
 								else if (hp < v->plr.expected_hp) {
 									Info("[AC-DATA] %s (ID:%d) | DAMAGE: hp %d->%d | Reset heal_rings (was %d)", v->nickname.value, v->id, v->plr.expected_hp, hp, v->plr.heal_rings_collected);
+									Info("[AC-DATA] %s (ID:%d) | Game Elapsed: %d | Black ring: %d", v->nickname.value, v->id, v->server->game.elapsed, v->plr.last_black_ring_hit);
 									v->plr.expected_hp = hp;
 									// Не сбрасываем heal_rings_collected при уроне от чёрного кольца
 									if (v->server->game.elapsed - v->plr.last_black_ring_hit > 0.2) {
