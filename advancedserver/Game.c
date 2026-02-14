@@ -954,20 +954,15 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 			AssertOrDisconnect(v->server, v->id != v->server->game.exe);
 			PacketRead(eid, packet, packet_read16, uint16_t);
 			if (game_despawn(v->server, NULL, eid)) {
+				SET_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
 				if (v->plr.rings >= 5) {
 					// Случай 1: Колец достаточно. Списываем 5 колец.
 					v->plr.rings -= 5;
-					
-					// Списываем с "банка" лечения, но не ниже нуля
-					if (v->plr.heal_rings_collected > 5) 
-						v->plr.heal_rings_collected -= 5;
-					else 
-						v->plr.heal_rings_collected = 0;
+					v->plr.heal_rings_collected -= 5;
 				} else {
 					// Случай 2: Колец меньше 5. Кольца не трогаем.
 					// Вместо этого ставим флаг, что следующий урон — от чёрного кольца.
 					// Это нужно, чтобы в CLIENT_PLAYER_DATA не сбросить heal_rings_collected.
-					SET_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
 				}
 				
 				Packet pack;
