@@ -682,9 +682,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
             AssertOrDisconnect(v->server, v->in_game);
             // Не сбрасываем heal_rings_collected, если урон от чёрного кольца 
             // (в течение 0.2 секунд после сбора)
-            if (v->server->game.elapsed - v->plr.last_black_ring_hit > 0.2) {
-                v->plr.heal_rings_collected = 0;
-            }
+            v->plr.heal_rings_collected = 0;
             server_broadcast_ex(v->server, packet, true, v->id);
             break;
         }
