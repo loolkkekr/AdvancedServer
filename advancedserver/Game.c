@@ -1221,22 +1221,12 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                     // так как мы убрали это выше. Кольца уже вычтены.
                     PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
                     packet_send(data->peer, &pack, true);
-                }
-				if (rings > 0) {
-					// Уменьшаем фактическое количество колец
 					if (v->plr.heal_rings_collected >= 3) {
 						v->plr.heal_rings_collected -= 3;
 					} else {
 						v->plr.rings = 0;
 					}
-					
-					// ВАЖНО: Не вычитаем из heal_rings_collected здесь!
-					// Это вызывает ложный античит в CLIENT_PLAYER_DATA, 
-					// так как сервер думает, что кольца потрачены, и не может "оплатить" рост HP, 
-					// если пакеты приходят в разном порядке.
-					// Античит "rings cheat" (v->plr.rings > v->plr.heal_rings_collected) 
-					// всё равно сработает, если читер попытается накрутить кольца.
-				}
+                }
                 Info("%s " LOG_RST "(id %d)" LOG_GRN " was revived!", to_revive->nickname.value, to_revive->id);
             }
             break;
