@@ -1224,7 +1224,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                 }
 				if (rings > 0) {
 					// Уменьшаем фактическое количество колец
-					if (v->plr.rings >= 3) {
+					if (v->plr.heal_rings_collected >= 3) {
 						v->plr.heal_rings_collected -= 3;
 					} else {
 						v->plr.rings = 0;
