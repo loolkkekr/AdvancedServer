@@ -1222,7 +1222,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                     PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
                     packet_send(data->peer, &pack, true);
 					if (v->plr.rings >= 3) {
-						v->plr.rings -= 0
+						v->plr.rings -= 0;
 						v->plr.heal_rings_collected -= 3;
 					} else {
 						v->plr.rings = 0;
