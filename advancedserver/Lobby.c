@@ -84,11 +84,10 @@ bool lobby_check_countdown(Server* server)
 	// Определяем время отсчета в зависимости от кол-ва игроков
 	int target_time = COUNTDOWN; // Стандартное время (61 или 59 по умолчанию)
 
-	if (server->peers.noitems >= 7)      target_time = 11;
-	else if (server->peers.noitems == 6) target_time = 21;
-	else if (server->peers.noitems == 5) target_time = 31;
-	else if (server->peers.noitems == 4) target_time = 41;
-	else if (server->peers.noitems == 3) target_time = 61;
+	if (server->peers.noitems >= 6)      target_time = 11;
+	else if (server->peers.noitems == 5) target_time = 15;
+	else if (server->peers.noitems == 4) target_time = 26;
+	else if (server->peers.noitems == 3) target_time = 36;
 	// else if (server->peers.noitems == 1) target_time = 7;
 	//target_time = 99999;
 	// Если есть хотя бы 2 игрока
@@ -103,7 +102,7 @@ bool lobby_check_countdown(Server* server)
 			// ---> НОВОЕ: Сообщение для 2 игроков <---
 			if (server->peers.noitems == 2)
 			{
-				server_broadcast_msg(server, 0, CLRCODE_YLW "Game start time is " CLRCODE_RED "90 seconds" CLRCODE_YLW ", since there are");
+				server_broadcast_msg(server, 0, CLRCODE_YLW "Game start time is " CLRCODE_RED "60 seconds" CLRCODE_YLW ", since there are");
 				server_broadcast_msg(server, 0, CLRCODE_YLW "only " CLRCODE_RED "2 players" CLRCODE_YLW " in the lobby.");
 			}
 			// ----------------------------------------
