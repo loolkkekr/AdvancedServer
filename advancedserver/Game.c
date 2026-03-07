@@ -1222,7 +1222,7 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                     PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
                     packet_send(data->peer, &pack, true);
 					if (v->plr.rings >= 3) {
-						v->plr.rings -= 0;
+						v->plr.rings -= 3;
 						v->plr.heal_rings_collected -= 3;
 					} else {
 						v->plr.rings = 0;
@@ -1316,7 +1316,8 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						else if (v->plr.rings > v->plr.heal_rings_collected) {
 							Info("[AC-DATA] %s (ID:%d) | RINGS CHEAT: server_rings=%d > heal_rings_collected=%d", 
 								v->nickname.value, v->id, v->plr.rings, v->plr.heal_rings_collected);
-							if (!(v->plr.flags & PLAYER_BLACKRING_HIT)) {
+							if ((v->plr.flags & PLAYER_BLACKRING_HIT) && v->plr.flags & PLAYER_DELAY_RING_ANTICHEAT) {
+								DEL_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
 								server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
 							}
 							return true;

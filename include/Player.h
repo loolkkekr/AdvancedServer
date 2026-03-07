@@ -16,6 +16,7 @@ typedef enum
 	PLAYER_LEFT = 0x1 << 5,
 	PLAYER_KILLER = 0x1 << 6,
 	PLAYER_BLACKRING_HIT = 0x1 << 7
+	PLAYER_DELAY_RING_ANTICHEAT = 0x1 << 8
 } PlayerFlags;
 
 typedef struct
