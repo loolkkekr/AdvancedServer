@@ -14,7 +14,7 @@
 #include <stdint.h>
 
 #define TICKSPERSEC 60
-#define SERVER_VERSION "1.1.0.1.chi"
+#define SERVER_VERSION "1.2.5"
 #define UPPER_BRACKET "-----\\advanced/server~-----"
 #define LOWER_BRACKET "------------------------"
 
