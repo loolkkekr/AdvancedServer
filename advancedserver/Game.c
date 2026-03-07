@@ -1159,21 +1159,6 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
             if (!to_revive || !(to_revive->plr.flags & PLAYER_DEAD)) break;
             
             // Уменьшаем кольца у текущего возрождающего (инициатора)
-            if (rings > 0) {
-                // Уменьшаем фактическое количество колец
-                if (v->plr.rings >= rings) {
-                    v->plr.rings -= rings;
-                } else {
-                    v->plr.rings = 0;
-                }
-                
-                // ВАЖНО: Не вычитаем из heal_rings_collected здесь!
-                // Это вызывает ложный античит в CLIENT_PLAYER_DATA, 
-                // так как сервер думает, что кольца потрачены, и не может "оплатить" рост HP, 
-                // если пакеты приходят в разном порядке.
-                // Античит "rings cheat" (v->plr.rings > v->plr.heal_rings_collected) 
-                // всё равно сработает, если читер попытается накрутить кольца.
-            }
             
             Packet pack;
             if (to_revive->plr.flags & PLAYER_CANTREVIVE) {
@@ -1236,6 +1221,13 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
                     // так как мы убрали это выше. Кольца уже вычтены.
                     PacketCreate(&pack, SERVER_REVIVAL_RINGSUB);
                     packet_send(data->peer, &pack, true);
+					if (v->plr.rings >= 3) {
+						SET_FLAG(v->plr.flags, PLAYER_DELAY_RING_ANTICHEAT);
+						v->plr.rings -= 3;
+						v->plr.heal_rings_collected -= 3;
+					} else {
+						v->plr.rings = 0;
+					}
                 }
                 Info("%s " LOG_RST "(id %d)" LOG_GRN " was revived!", to_revive->nickname.value, to_revive->id);
             }
@@ -1325,10 +1317,13 @@ bool game_state_handletcp(PeerData* v, Packet* packet)
 						else if (v->plr.rings > v->plr.heal_rings_collected) {
 							Info("[AC-DATA] %s (ID:%d) | RINGS CHEAT: server_rings=%d > heal_rings_collected=%d", 
 								v->nickname.value, v->id, v->plr.rings, v->plr.heal_rings_collected);
-							if (v->plr.flags & PLAYER_BLACKRING_HIT) {
-								server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
+							if (v->plr.flags & PLAYER_BLACKRING_HIT || v->plr.flags & PLAYER_DELAY_RING_ANTICHEAT) {
+								
+								DEL_FLAG(v->plr.flags, PLAYER_BLACKRING_HIT);
+								DEL_FLAG(v->plr.flags, PLAYER_DELAY_RING_ANTICHEAT);
+								return true;
 							}
-							return true;
+							server_disconnect(v->server, v->peer, DR_OTHER, "rings cheat");
 						}
 
 						if (revival < 2) {
